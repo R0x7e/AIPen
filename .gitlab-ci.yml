@@ -1,0 +1,83 @@
+stages:
+  - build
+  - release
+
+variables:
+  GIT_DEPTH: 0  # 获取完整历史，用于标签构建
+  UV_HTTP_TIMEOUT: 120  # 增加网络超时时间（秒）
+
+# 构建 Python 包
+build_package:
+  stage: build
+  image: python:3.11-slim
+  only:
+    - /^v.*$/  # 仅在 v* 标签时触发
+  when: on_success
+  script:
+    # 安装 git（setuptools-scm 需要）
+    - apt-get update && apt-get install -y git
+
+    # 安装 uv
+    - pip install uv
+
+    # 设置 Python（镜像已自带，这里确认版本）
+    - python --version
+
+    # 安装项目依赖
+    - uv sync --all-extras
+
+    # 构建包
+    - uv build
+
+  # 保存构建产物
+  artifacts:
+    paths:
+      - dist/*
+    expire_in: 1 week
+
+# 发布到 GitLab Package Registry
+publish_to_gitlab:
+  stage: release
+  image: python:3.11-slim
+  only:
+    - /^v.*$/
+  needs:
+    - build_package
+  script:
+    # 安装 twine（用于发布到 GitLab Package Registry）
+    - pip install twine
+
+    # 发布到 GitLab Package Registry
+    - twine upload --repository-url ${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages/pypi dist/*
+  variables:
+    TWINE_USERNAME: gitlab-ci-token
+    TWINE_PASSWORD: ${CI_JOB_TOKEN}
+    TWINE_NON_INTERACTIVE: "1"
+
+  # 创建 GitLab Release
+  release:
+    tag_name: $CI_COMMIT_TAG
+    name: "Release $CI_COMMIT_TAG"
+    description: "Release $CI_COMMIT_TAG"
+    assets:
+      links:
+        - name: "GitLab Package Registry"
+          url: "${CI_API_V4_URL}/projects/${CI_PROJECT_ID}/packages"
+
+# 发布到 PyPI（可选）
+publish_to_pypi:
+  stage: release
+  image: python:3.11-slim
+  only:
+    - /^v.*$/
+  needs:
+    - build_package
+  script:
+    # 安装 uv
+    - pip install uv
+
+    # 发布到 PyPI
+    - uv publish
+  variables:
+    UV_PUBLISH_TOKEN: ${PYPI_TOKEN}  # 需在 GitLab CI/CD 变量中配置
+  when: manual  # 手动触发，避免误发布
