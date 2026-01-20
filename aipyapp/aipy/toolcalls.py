@@ -62,15 +62,21 @@ class ToolResult(BaseModel):
 
 class ExecToolArgs(BaseModel):
     """
-    Execute the code provided in `code`.
+    Execute code.
 
-    Use `name` to label this code block so it can be referenced or edited later
-    (e.g. via the AIPY_Edit tool).
+    Behavior:
+    1. If `code` is NOT provided:
+       - `name` MUST be provided.
+       - Execute the code block identified by `name`.
 
-    Rules:
-    - Python code can be executed directly and does not require `path`.
-    - Non-Python code MUST specify `path` to an executable file.
-    - Supported non-Python languages: html, bash, applescript, javascript.
+    2. If `code` IS provided:
+       - Execute the code in `code`.
+       - If `name` is also provided, create or update a code block named `name`
+         with the content of `code`.
+
+    Language rules:
+    - Supported languages: python, html, bash, applescript, javascript.
+    - For non-Python code, `path` is REQUIRED.
     """
 
     name: Optional[str] = Field(None, title="Code block name", description="Identifier for this code block, used for later editing or reference.", min_length=1, strip_whitespace=True)
