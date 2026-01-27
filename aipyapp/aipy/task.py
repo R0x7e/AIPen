@@ -82,6 +82,7 @@ class TaskData(BaseModel):
     id: str = Field(default_factory=lambda: uuid.uuid4().hex)
     version: int = Field(default=TASK_VERSION, frozen=True)
     depth: int = Field(default=0)
+    features: PromptFeatures = Field(default_factory=PromptFeatures)
     steps: List[StepData] = Field(default_factory=list)
     blocks: CodeBlocks = Field(default_factory=CodeBlocks)
     context: ContextData = Field(default_factory=ContextData)
@@ -180,7 +181,12 @@ class Task(Stoppable):
 
         # Phase 5: Initialize execution components (depend on task)
         self.mcp = manager.mcp
-        self.features = PromptFeatures(self.role.get_features())
+        # 如果 data.features 为空则从 role 初始化，否则使用 data.features（从加载的文件恢复）
+        if not data.features.root:
+            self.features = PromptFeatures(self.role.get_features())
+            data.features = self.features
+        else:
+            self.features = data.features
         if self.depth >= MAX_DEPTH:
             self.log.warning(f"Task depth {self.depth} exceeds maximum of {MAX_DEPTH}")
             self.features.disable('subtask')

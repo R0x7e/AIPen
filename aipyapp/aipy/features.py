@@ -1,15 +1,36 @@
 from __future__ import annotations
-from typing import Dict, Optional
+from typing import Dict, List, Optional, Any
+
+from pydantic import RootModel, Field, field_validator
 
 
-class PromptFeatures:
+class PromptFeatures(RootModel[Dict[str, bool]]):
     """
     灵活的功能开关管理类，支持任意字符串功能名称
+    基于 RootModel 以支持序列化到 TaskData，直接表现为字典避免嵌套
     """
-    def __init__(self, features: Optional[Dict[str, bool]] = None):
-        self.features = {}
-        if features:
-            self.features.update(features)
+    root: Dict[str, bool] = Field(default_factory=dict, description="功能开关字典")
+
+    def __init__(self, features: Optional[Dict[str, bool]] = None, **kwargs):
+        """
+        兼容旧的初始化方式: PromptFeatures({'test': True})
+        """
+        if features is not None:
+            # RootModel 需要第一个位置参数
+            features = {k: bool(v) for k, v in features.items()}
+            super().__init__(features)
+        else:
+            super().__init__(**kwargs)
+
+    @property
+    def features(self) -> Dict[str, bool]:
+        """兼容旧代码，提供 features 属性"""
+        return self.root
+
+    @features.setter
+    def features(self, value: Dict[str, bool]):
+        """兼容旧代码，设置 features 属性"""
+        self.root = value
 
     @property
     def enabled_features(self) -> List[str]:

@@ -2,11 +2,11 @@
 # -*- coding: utf-8 -*-
 
 import time
+import json
 import random
 import hashlib
 import base64
 from dataclasses import dataclass
-import socket
 from enum import Enum
 from collections import Counter
 from abc import ABC, abstractmethod
@@ -15,7 +15,7 @@ from typing import Union, List, Dict, Any, Literal
 from loguru import logger
 import httpx
 import openai
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 from .config import ClientConfig
 
 
@@ -56,6 +56,12 @@ class Message(BaseModel):
             self._mid_cache = base64.urlsafe_b64encode(hash_bytes[:8]).decode('utf-8').rstrip('=')
         return self._mid_cache
 
+    def to_llm_dict(self):
+        msg = {'role': self.role.value}
+        if self.content:
+            msg['content'] = self.content
+        return msg
+
 
 class UserMessage(Message):
     role: Literal[MessageRole.USER] = MessageRole.USER
@@ -78,12 +84,35 @@ class SystemMessage(Message):
     role: Literal[MessageRole.SYSTEM] = MessageRole.SYSTEM
 
 
+class ToolFunction(BaseModel):
+    name: str
+    arguments: Dict[str, Any] | None = None
+    _arguments_text: str | None = PrivateAttr(default=None)
+
+
+class ToolCall(BaseModel):
+    id: str
+    type: Literal["function"]
+    function: ToolFunction
+
+    def to_llm_dict(self):
+        return {'id': self.id, 'type': self.type, 'function': {'name': self.function.name, 'arguments': json.dumps(self.function.arguments)}}
+
+
 class ToolMessage(Message):
     role: Literal[MessageRole.TOOL] = MessageRole.TOOL
+    name: str | None = None
     tool_call_id: str
 
     def dict(self):
         return {'role': self.role.value, 'content': self.content, 'tool_call_id': self.tool_call_id}
+
+    def to_llm_dict(self):
+        msg = super().to_llm_dict()
+        msg['tool_call_id'] = self.tool_call_id
+        if self.name:
+            msg['name'] = self.name
+        return msg
 
 
 class AIMessage(Message):
@@ -91,16 +120,22 @@ class AIMessage(Message):
     reason: str | None = None
     finish_reason: str | None = None
     usage: Counter = Field(default_factory=Counter)
-    tool_calls: List[Any] | None = None
+    tool_calls: List[ToolCall] | None = None
 
     def dict(self):
         d = {'role': self.role.value, 'content': self.content}
         # if self.finish_reason:
         #    d['finish_reason'] = self.finish_reason # 这会导致Mistral报错
         if self.tool_calls:
-            d['tool_calls'] = [tc.model_dump() if hasattr(tc, 'model_dump') else tc.dict() if hasattr(tc, 'dict') else tc for tc in self.tool_calls]
+            d['tool_calls'] = self.tool_calls
         # d['reasoning_content'] = self.reason
         return d
+
+    def to_llm_dict(self):
+        msg = super().to_llm_dict()
+        if self.tool_calls:
+            msg['tool_calls'] = [tc.to_llm_dict() for tc in self.tool_calls]
+        return msg
 
 
 class ErrorMessage(Message):

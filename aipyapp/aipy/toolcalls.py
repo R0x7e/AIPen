@@ -124,6 +124,7 @@ class MCPToolArgs(BaseModel):
 class MCPToolResult(ToolResult):
     """MCP tool result"""
 
+    name: Optional[str] = Field(None, title="Actual MCP tool name called")
     result: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -131,6 +132,11 @@ class SubTaskArgs(BaseModel):
     """
     Delegate a complex sub-problem to a subtask agent.
     Use this when a task is too complex to handle in a single step or requires a specialized agent context.
+
+    **CRITICAL: Avoid creating unnecessary nested subtasks**
+    - Before using AIPY_SubTask, ask yourself: "Can I complete this with code execution?"
+    - If yes, use AIPY_Exec instead
+    - Nested subtasks should only be used for genuinely complex, multi-stage problems
     """
 
     instruction: str = Field(title="SubTask instruction", description="Detailed instruction for the subtask", min_length=1, strip_whitespace=True)
@@ -203,6 +209,12 @@ class ToolCallResult(BaseModel):
     def is_aipy(self) -> bool:
         return self.source == ToolSource.AIPY
 
+    @property
+    def tool_name(self) -> str:
+        if self.name == ToolName.MCP:
+            return self.result.name
+        return self.name.value
+
 
 class ToolCallProcessor:
     """工具调用处理器 - 高级接口"""
@@ -265,20 +277,22 @@ class ToolCallProcessor:
             ToolResult: 执行结果
         """
         task.emit('tool_call_started', tool_call=tool_call)
-        if tool_call.name == ToolName.EXEC:
+        tool_name = tool_call.name
+        if tool_name == ToolName.EXEC:
             result = self._call_exec(task, tool_call)
-        elif tool_call.name == ToolName.EDIT:
+        elif tool_name == ToolName.EDIT:
             result = self._call_edit(task, tool_call)
-        elif tool_call.name == ToolName.MCP:
+        elif tool_name == ToolName.MCP:
             result = self._call_mcp(task, tool_call)
-        elif tool_call.name == ToolName.SUBTASK:
+            tool_name = result.name
+        elif tool_name == ToolName.SUBTASK:
             result = self._call_subtask(task, tool_call)
-        elif tool_call.name == ToolName.SURVEY:
+        elif tool_name == ToolName.SURVEY:
             result = self._call_survey(task, tool_call)
         else:
             result = ToolResult(error=Error.new('Unknown tool'))
 
-        toolcall_result = ToolCallResult(id=tool_call.id, source=tool_call.source, name=tool_call.name, result=result)
+        toolcall_result = ToolCallResult(id=tool_call.id, source=tool_call.source, name=tool_name, result=result)
         task.emit('tool_call_completed', result=toolcall_result)
         return toolcall_result
 
@@ -361,7 +375,7 @@ class ToolCallProcessor:
         name = getattr(mcp_args, 'name', None)
         arguments = getattr(mcp_args, 'arguments', {}) or {}
         result = task.mcp.call_tool(name, arguments)
-        return MCPToolResult(result=result)
+        return MCPToolResult(result=result, name=name)
 
     def _call_subtask(self, task: 'Task', tool_call: ToolCall) -> SubTaskResult:
         """执行 SubTask 工具"""

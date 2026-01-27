@@ -18,6 +18,7 @@ from .prompts import Prompts
 if TYPE_CHECKING:
     from .task import Task
 
+
 class Round(BaseModel):
     # LLM的回复消息
     llm_response: Response = Field(default_factory=Response)
@@ -30,7 +31,7 @@ class Round(BaseModel):
 
     def should_continue(self) -> bool:
         return self.llm_response.should_continue()
-    
+
     def get_system_feedback(self, prompts: Prompts) -> UserMessage | ToolMessage | list[ToolMessage] | None:
         if self.llm_response.errors:
             prompt = prompts.get_parse_error_prompt(self.llm_response.errors)
@@ -52,25 +53,25 @@ class Round(BaseModel):
         if self.toolcall_results:
             tool_messages = []
             for res in self.toolcall_results:
-                if res.is_openai(): # ToolCallResult has id
+                if res.is_openai():  # ToolCallResult has id
                     # 确保 result 是字符串
                     content = res.result.to_json() if hasattr(res.result, 'to_json') else str(res.result)
-                    msg = ToolMessage(tool_call_id=res.id, content=content)
-                    tool_messages.append(msg) 
+                    msg = ToolMessage(tool_call_id=res.id, content=content, name=res.tool_name)
+                    tool_messages.append(msg)
             if tool_messages:
-                return tool_messages           
+                return tool_messages
             prompt = prompts.get_toolcall_results_prompt(self.toolcall_results)
             return UserMessage(content=prompt)
 
         return None
-    
+
     def can_safely_delete(self) -> bool:
         """判断Round对应的上下文消息是否可以安全删除
-        
+
         可以安全删除的情况：
         1. LLM回复有解析错误
         2. 所有工具调用都失败
-        
+
         保留的情况：
         3. 纯文本Round（Step自然结束）
         4. 有任何成功的工具调用
@@ -78,28 +79,29 @@ class Round(BaseModel):
         # 1. LLM回复有解析错误 -> 可以删除
         if self.llm_response.errors:
             return True
-        
+
         # 2. 所有工具调用都失败 -> 可以删除
         if self.toolcall_results and all(self._tool_call_failed(tcr) for tcr in self.toolcall_results):
             return True
-        
+
         # 3. 其他情况 -> 保留
         # 包括：纯文本Round（Step结束）和有成功工具调用的Round
         return False
-    
+
     def _tool_call_failed(self, tool_call_result: ToolCallResult) -> bool:
         """判断工具调用是否失败"""
         # 检查工具调用层面的错误
         if tool_call_result.result.error is not None:
             return True
-        
+
         # 对于 Exec 工具，还需要检查实际执行结果
         if tool_call_result.name == ToolName.EXEC:
             exec_result = tool_call_result.result.result
             return exec_result.has_error()
-        
+
         return False
-    
+
+
 class StepData(BaseModel):
     # 用户的初始指令作为Step级别的字段
     initial_instruction: ChatMessage
@@ -107,16 +109,17 @@ class StepData(BaseModel):
     title: str | None = None
     start_time: float = Field(default_factory=time.time)
     end_time: float | None = None
-    
-    # 每个Round包含完整的对话+执行循环  
+
+    # 每个Round包含完整的对话+执行循环
     rounds: List[Round] = Field(default_factory=list)
-    
+
     @property
     def final_response(self):
         return self.rounds[-1].llm_response if self.rounds else None
-    
+
     def add_round(self, round: Round):
         self.rounds.append(round)
+
 
 class Step:
     def __init__(self, task: Task, data: StepData):
@@ -132,27 +135,24 @@ class Step:
     def _initialize_summary_from_existing_data(self):
         """从现有 rounds 中初始化 summary counter"""
         for round_data in self._data.rounds:
-            if (round_data.llm_response and
-                hasattr(round_data.llm_response, 'message') and
-                round_data.llm_response.message and
-                hasattr(round_data.llm_response.message, 'usage')):
+            if round_data.llm_response and hasattr(round_data.llm_response, 'message') and round_data.llm_response.message and hasattr(round_data.llm_response.message, 'usage'):
                 usage = round_data.llm_response.message.usage
                 if usage:
                     self._summary.update(usage)
-    
+
     @property
     def data(self):
         return self._data
-    
+
     def __getitem__(self, name: str):
         return getattr(self._data, name)
-    
+
     def __setitem__(self, name: str, value: Any):
         setattr(self._data, name, value)
-    
+
     def get(self, name: str, default: Any = None):
         return getattr(self._data, name, default)
-    
+
     def request(self, user_message: ChatMessage | List[ChatMessage]) -> Response:
         client = self.task.client
         self.task.emit('request_started', llm=client.name)
@@ -169,19 +169,19 @@ class Step:
     def process(self, response: Response) -> list[ToolCallResult] | None:
         if isinstance(response.message.message, ErrorMessage):
             return None
-        
+
         if response.task_status:
             self.task.emit('task_status', status=response.task_status)
 
         if response.code_blocks:
             self.task.blocks.add_blocks(response.code_blocks)
-        
+
         if response.tool_calls:
             toolcall_results = self.task.tool_call_processor.process(response.tool_calls)
         else:
             toolcall_results = None
         return toolcall_results
-    
+
     def run(self) -> Response:
         max_rounds = self.task.max_rounds
         message_storage = self.task.message_storage
@@ -192,7 +192,7 @@ class Step:
             # 请求LLM回复
             response = self.request(user_message)
             self.task.emit('parse_reply_completed', response=response)
-            
+
             # 创建新的Round，包含LLM回复
             round = Round(llm_response=response)
 
@@ -210,9 +210,7 @@ class Step:
             if isinstance(system_feedback, list):
                 stored_msgs = []
                 for msg in system_feedback:
-                    stored_msgs.append(
-                        msg if isinstance(msg, ChatMessage) else message_storage.store(msg)
-                    )
+                    stored_msgs.append(msg if isinstance(msg, ChatMessage) else message_storage.store(msg))
                 round.system_feedback = stored_msgs
                 user_message = stored_msgs
             else:
@@ -256,8 +254,7 @@ class StepCleaner:
         self.context_manager = context_manager
         self.log = logger.bind(src='StepCleaner')
 
-    def _execute_cleaning(self, step: 'Step', messages_to_clean: List[str],
-                         operation_name: str, log_prefix: str) -> tuple[int, int, int, int]:
+    def _execute_cleaning(self, step: 'Step', messages_to_clean: List[str], operation_name: str, log_prefix: str) -> tuple[int, int, int, int]:
         """执行清理的核心公共逻辑
 
         Args:
@@ -319,7 +316,7 @@ class StepCleaner:
 
             self.log.info(f"Will clean Round {i}: {self._get_round_summary(round)}")
 
-        self.log.info(f"Will clean {len(messages_to_clean)} messages from {len(rounds)-1} rounds (preserving last round)")
+        self.log.info(f"Will clean {len(messages_to_clean)} messages from {len(rounds) - 1} rounds (preserving last round)")
         return messages_to_clean
 
     def _get_compact_messages(self, step: 'Step') -> List[str]:
@@ -404,9 +401,7 @@ class StepCleaner:
         messages_to_clean = self._get_cleanup_messages(step)
 
         # 使用公共清理逻辑
-        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self._execute_cleaning(
-            step, messages_to_clean, "Maximum cleanup", "Maximum cleanup"
-        )
+        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self._execute_cleaning(step, messages_to_clean, "Maximum cleanup", "Maximum cleanup")
 
         # 记录特定于cleanup的日志
         self.log.info(f"Execution records preserved: {len(rounds)} rounds kept")
@@ -438,9 +433,7 @@ class StepCleaner:
         messages_to_clean = self._get_compact_messages(step)
 
         # 使用公共清理逻辑
-        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self._execute_cleaning(
-            step, messages_to_clean, "Compact", "Smart compact"
-        )
+        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self._execute_cleaning(step, messages_to_clean, "Compact", "Smart compact")
 
         # 记录特定于compact的日志
         self.log.info(f"Execution records preserved: {len(rounds)} rounds kept")
@@ -459,9 +452,7 @@ class StepCleaner:
         messages_to_clean = self._get_delete_messages(step)
 
         # 使用公共清理逻辑
-        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self._execute_cleaning(
-            step, messages_to_clean, "Step deletion", "Step deletion"
-        )
+        cleaned_count, remaining_messages, tokens_saved, tokens_remaining = self._execute_cleaning(step, messages_to_clean, "Step deletion", "Step deletion")
 
         return cleaned_count, remaining_messages, tokens_saved, tokens_remaining
 
