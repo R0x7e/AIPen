@@ -62,7 +62,7 @@ class BashExecutor(SubprocessExecutor):
 
 class PowerShellExecutor(SubprocessExecutor):
     name = 'powershell'
-    command = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File']
+    command = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-OutputEncoding', 'UTF8', '-File']
 
 
 class AppleScriptExecutor(SubprocessExecutor):

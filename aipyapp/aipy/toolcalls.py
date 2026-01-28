@@ -75,7 +75,7 @@ class ExecToolArgs(BaseModel):
          with the content of `code`.
 
     Language rules:
-    - Supported languages: python, html, bash, applescript, javascript.
+    - Supported languages: python, html, bash, powershell, applescript, javascript.
     - For non-Python code, `path` is REQUIRED.
     """
 
