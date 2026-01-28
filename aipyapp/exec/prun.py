@@ -1,18 +1,20 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-""" subprocess-based bash/powershell code execution """
+"""subprocess-based bash/powershell code execution"""
 
 import traceback
 import subprocess
-from typing import Any, Dict, Optional
+from typing import Optional
 
 from loguru import logger
 
 from .types import ProcessResult
 
+
 class SubprocessExecutor:
     """使用 subprocess 执行代码块"""
+
     name = None
     command = None
     timeout = 30  # 默认超时时间为10秒
@@ -30,7 +32,7 @@ class SubprocessExecutor:
         else:
             cmd = None
         return cmd
-    
+
     def __call__(self, block) -> ProcessResult:
         """执行代码块"""
         cmd = self.get_cmd(block)
@@ -40,45 +42,38 @@ class SubprocessExecutor:
         self.log.info(f"Exec: {cmd}")
 
         try:
-            cp = subprocess.run(
-                cmd,
-                shell=False,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="ignore",
-                timeout=self.timeout
-            )
+            cp = subprocess.run(cmd, shell=False, capture_output=True, text=True, encoding="utf-8", errors="ignore", timeout=self.timeout)
             stdout = cp.stdout.strip() if cp.stdout else None
             stderr = cp.stderr.strip() if cp.stderr else None
 
-            result = ProcessResult(
-                stdout=stdout,
-                stderr=stderr,
-                returncode=cp.returncode
-            )
+            result = ProcessResult(stdout=stdout, stderr=stderr, returncode=cp.returncode)
         except subprocess.TimeoutExpired:
             result = ProcessResult(errstr=f'Execution timed out after {self.timeout} seconds')
         except Exception as e:
             result = ProcessResult(errstr=str(e), traceback=str(traceback.format_exc()))
 
         return result
-    
+
+
 class BashExecutor(SubprocessExecutor):
     name = 'bash'
     command = ['bash']
 
+
 class PowerShellExecutor(SubprocessExecutor):
     name = 'powershell'
-    command = ['powershell', '-Command']
+    command = ['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File']
+
 
 class AppleScriptExecutor(SubprocessExecutor):
     name = 'applescript'
     command = ['osascript']
-    
+
+
 class NodeExecutor(SubprocessExecutor):
     name = 'javascript'
     command = ['node']
+
 
 class MarkdownExecutor(SubprocessExecutor):
     name = 'markdown'
