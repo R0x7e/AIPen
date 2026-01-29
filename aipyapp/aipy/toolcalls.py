@@ -129,15 +129,7 @@ class MCPToolResult(ToolResult):
 
 
 class SubTaskArgs(BaseModel):
-    """
-    Delegate a complex sub-problem to a subtask agent.
-    Use this when a task is too complex to handle in a single step or requires a specialized agent context.
-
-    **CRITICAL: Avoid creating unnecessary nested subtasks**
-    - Before using AIPY_SubTask, ask yourself: "Can I complete this with code execution?"
-    - If yes, use AIPY_Exec instead
-    - Nested subtasks should only be used for genuinely complex, multi-stage problems
-    """
+    """Delegate a sub-problem to a subtask agent."""
 
     instruction: str = Field(title="SubTask instruction", description="Detailed instruction for the subtask", min_length=1, strip_whitespace=True)
     title: Optional[str] = Field(default=None, title="SubTask title", description="Title of the subtask")

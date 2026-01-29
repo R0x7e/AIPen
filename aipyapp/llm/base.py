@@ -89,6 +89,10 @@ class ToolFunction(BaseModel):
     arguments: Dict[str, Any] | None = None
     _arguments_text: str | None = PrivateAttr(default=None)
 
+    @property
+    def arguments_text(self):
+        return self._arguments_text
+
 
 class ToolCall(BaseModel):
     id: str
@@ -96,7 +100,8 @@ class ToolCall(BaseModel):
     function: ToolFunction
 
     def to_llm_dict(self):
-        return {'id': self.id, 'type': self.type, 'function': {'name': self.function.name, 'arguments': json.dumps(self.function.arguments)}}
+        arguments = self.function.arguments_text
+        return {'id': self.id, 'type': self.type, 'function': {'name': self.function.name, 'arguments': arguments}}
 
 
 class ToolMessage(Message):

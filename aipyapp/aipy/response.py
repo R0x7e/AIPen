@@ -139,7 +139,7 @@ class Response(BaseModel):
                 continue
 
             try:
-                json_str = tc.function._arguments_text
+                json_str = tc.function.arguments_text
 
                 # Some providers may send empty arguments for no-arg tool calls.
                 # Treat empty/blank/None as an empty JSON object to avoid parse errors.

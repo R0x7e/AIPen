@@ -55,7 +55,7 @@ Error handling:
 Name: `AIPY_SubTask`
 
 A SubTask is a powerful tool to delegate complex, self-contained parts of your main task. Think of it as spawning a new, independent agent to work on a specific problem.
-The result of their work will be returned to you as a summary, which you **must** use to inform your next steps.
+The result of their work will be returned to you as a summary.
 
 {% if features.has('aipy_call') %}
 - `input`:
@@ -63,19 +63,7 @@ The result of their work will be returned to you as a summary, which you **must*
   - `title`: Optional descriptive title for the subtask (string, optional)
 {% endif %}
 
-**When should you use a SubTask?**
-- **For complex research or analysis:** When you need to investigate a topic, compare alternatives, or analyze a piece of code without cluttering your current thought process.
-- **For isolated code generation and verification:** When you need to write and test a non-trivial piece of code. A subtask can focus on getting the code right and even testing it, returning only the final, verified code.
-- **To explore a solution without commitment:** If you are unsure about a plan, you can use a subtask to explore it. If it fails, it won't affect your main task's progress.
-
-**When NOT to use a SubTask:**
-- If the task can be completed directly with code execution (AIPY_Exec), do it yourself
-- Simple API calls, data fetching, or straightforward operations
-- Tasks that don't require complex reasoning or multiple steps
-- If you are already a subtask, prioritize direct execution over creating nested subtasks
-
-**Sharing data between parent and subtask:**
-
+<parent_subtask_communication>
 There are three methods for parent-subtask communication:
 
 1. **Direct message return (Recommended - Simplest):**
@@ -133,6 +121,7 @@ model_data = {
 }
 utils.save_shared_data("model.pkl", model_data)
 ```
+</parent_subtask_communication>
 
 **Important Notes:**
 - SubTask does NOT inherit the parent task's context or message history. You must provide all necessary context in the `instruction`.
