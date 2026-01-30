@@ -18,7 +18,7 @@ detail = """
 [features]
 subtask = true
 openai_call = true
-aipy_call = false
+aipy_call = true
 exec_code = true
 survey = false
 task_status = false
@@ -39,8 +39,6 @@ detail = """
 - 不需要对任务进行拆解与分步执行
 - 按[任务分析→执行任务→验证反馈]流程处理
 - 所有流程均在一个代码块中实现
-3. 执行规范
-- 当前步骤生成代码块后，需要等待用户执行反馈后才能进行下一个步骤。
 
 ## 复杂任务拆解模板(请输出模板内容)
 

@@ -224,7 +224,7 @@ class DisplayClassic(RichDisplayPlugin):
                 elif tool_name == tool_name.SUBTASK:
                     sub_tree.add(f"{T('SubTask')}: {tool_call.arguments.instruction[:50]}...")
                 else:
-                    sub_tree.add(f"{tool_call.name.value}: {tool_call.arguments}")
+                    sub_tree.add(f"{tool_call.tool_name}: {tool_call.arguments}")
             
         errors = response.errors
         if errors:
@@ -343,7 +343,7 @@ class DisplayClassic(RichDisplayPlugin):
     def on_tool_call_started(self, event):
         """工具调用开始事件处理"""
         tool_call = event.typed_event.tool_call
-        title = self._get_title(T("Start calling tool {}"), tool_call.name.value)
+        title = self._get_title(T("Start calling tool {}"), tool_call.tool_name)
         tree = Tree(title)
         args_tree = self._format_tool_args(tool_call.arguments)
         tree.add(args_tree)
@@ -353,7 +353,7 @@ class DisplayClassic(RichDisplayPlugin):
         """MCP 工具调用结果事件处理"""
         typed_event = event.typed_event
         result = typed_event.result
-        title = self._get_title(T("Tool call result {}"), result.name.value)
+        title = self._get_title(T("Tool call result {}"), result.tool_name)
         tree = Tree(title)
         json_result = result.result.model_dump_json(indent=2, exclude_none=True)
         tree.add(Syntax(json_result, "json", word_wrap=True))

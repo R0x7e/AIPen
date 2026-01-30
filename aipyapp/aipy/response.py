@@ -157,18 +157,16 @@ class Response(BaseModel):
                         self.log.warning(msg)
                         json_str = json_str[: last_brace_idx + 1]
 
-                args = json.loads(json_str)
-                name = tc.function.name
-                tc.function.arguments = args
+                arguments = json.loads(json_str)
+                funcname = tc.function.name
+                tc.function.arguments = arguments
 
                 try:
-                    tool_name = ToolName(name)
-                    arguments = args
+                    tool_name = ToolName(funcname)
                 except ValueError:
                     tool_name = ToolName.MCP  # Default to MCP if not recognized
-                    arguments = {"action": "call_tool", "name": name, "arguments": args}
 
-                tool_call = ToolCall(name=tool_name, arguments=arguments, id=tc.id, source=ToolSource.OPENAI)
+                tool_call = ToolCall(name=tool_name, funcname=funcname, arguments=arguments, id=tc.id, source=ToolSource.OPENAI)
                 tool_calls.append(tool_call)
 
             except json.JSONDecodeError as e:
@@ -229,37 +227,32 @@ class Response(BaseModel):
 
             try:
                 data = json.loads(json_str)
-
-                # Ensure ID exists
-                if "id" not in data:
-                    data["id"] = uuid4().hex
-
-                name = data.get("name")
-
-                # Check if it is a known internal tool
-                is_internal = False
-                try:
-                    ToolName(name)
-                    is_internal = True
-                except ValueError:
-                    pass
-
-                if is_internal:
-                    data['source'] = ToolSource.AIPY
-                    # Internal tool: validate directly
-                    tool_call = ToolCall.model_validate(data)
-                else:
-                    # Unknown tool: treat as MCP tool
-                    # Wrap it into MCPToolArgs structure
-                    wrapped_data = {"id": data["id"], "name": "MCP", "source": ToolSource.AIPY, "arguments": {"action": "call_tool", "name": name, "arguments": data.get("arguments", {})}}
-                    tool_call = ToolCall.model_validate(wrapped_data)
-
-                tool_calls.append(tool_call)
-
             except json.JSONDecodeError as e:
                 errors.add("Invalid JSON in ToolCall", json_str=json_str, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
+                continue
+
+            name = data.get("name")
+            if not name:
+                errors.add("ToolCall name is missing", json_str=json_str, error_type=ParseErrorType.INVALID_FORMAT)
+                continue
+
+            # Ensure ID exists
+            data.setdefault("id", uuid4().hex)
+            data["source"] = ToolSource.AIPY
+            data["funcname"] = name
+
+            try:
+                ToolName(name)
+            except ValueError:
+                data['name'] = ToolName.MCP.value
+
+            try:
+                tool_call = ToolCall.model_validate(data)
             except ValidationError as e:
                 errors.add("Invalid ToolCall data", json_str=json_str, exception=str(e), error_type=ParseErrorType.PYDANTIC_VALIDATION_ERROR)
+                continue
+            tool_calls.append(tool_call)
+
         self._add_tool_calls(tool_calls)
         return errors
 

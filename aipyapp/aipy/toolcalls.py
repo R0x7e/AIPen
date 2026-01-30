@@ -115,17 +115,13 @@ class EditToolResult(ToolResult):
 class MCPToolArgs(BaseModel):
     """MCP tool arguments"""
 
-    action: str
-    name: str
-    arguments: Optional[Dict[str, Any]] = {}
     model_config = {'extra': 'allow'}
 
 
 class MCPToolResult(ToolResult):
     """MCP tool result"""
 
-    name: Optional[str] = Field(None, title="Actual MCP tool name called")
-    result: Dict[str, Any] = Field(default_factory=dict)
+    model_config = {'extra': 'allow'}
 
 
 class SubTaskArgs(BaseModel):
@@ -164,6 +160,7 @@ class ToolCall(BaseModel):
     id: str = Field(title='Unique ID for this ToolCall')
     source: ToolSource = Field(title='Tool source')
     name: ToolName
+    funcname: str = Field(default="", title="Actual function name for display/log")
     arguments: Union[ExecToolArgs, EditToolArgs, MCPToolArgs, SubTaskArgs, SurveyToolArgs] = Field(validation_alias=AliasChoices("arguments", "input"), title="Tool arguments")
 
     @model_validator(mode='before')
@@ -180,6 +177,10 @@ class ToolCall(BaseModel):
     def __repr__(self):
         return self.__str__()
 
+    @property
+    def tool_name(self) -> str:
+        return self.funcname or self.name.value
+
     def is_openai(self) -> bool:
         return self.source == ToolSource.OPENAI
 
@@ -193,6 +194,7 @@ class ToolCallResult(BaseModel):
     id: str = Field(title='Unique ID for this ToolCall')
     source: ToolSource = Field(title='Tool source')
     name: ToolName
+    funcname: str = Field(default="", title="Actual function name for display/log")
     result: Union[ExecToolResult, EditToolResult, MCPToolResult, SubTaskResult, SurveyToolResult, ToolResult] = Field(title="Tool result")
 
     def is_openai(self) -> bool:
@@ -203,9 +205,7 @@ class ToolCallResult(BaseModel):
 
     @property
     def tool_name(self) -> str:
-        if self.name == ToolName.MCP:
-            return self.result.name
-        return self.name.value
+        return self.funcname or self.name.value
 
 
 class ToolCallProcessor:
@@ -233,7 +233,7 @@ class ToolCallProcessor:
             # Check for duplicate tool call ID
             if tool_call.id in self.processed_ids:
                 self.log.warning(f"Duplicate tool call ID detected: {tool_call.id}")
-                results.append(ToolCallResult(id=tool_call.id, name=tool_call.name, source=tool_call.source, result=ToolResult(error=Error.new(f"Tool call {tool_call.id} has already been executed. Please do not reuse tool call IDs."))))
+                results.append(ToolCallResult(id=tool_call.id, name=tool_call.name, funcname=tool_call.funcname, source=tool_call.source, result=ToolResult(error=Error.new(f"Tool call {tool_call.id} has already been executed. Please do not reuse tool call IDs."))))
                 continue
 
             self.processed_ids.add(tool_call.id)
@@ -244,7 +244,7 @@ class ToolCallProcessor:
                 block_name = getattr(tool_call.arguments, 'name', None)
                 if block_name and block_name in failed_blocks:
                     error = Error.new('Execution skipped: previous edit of the block failed', block_name=block_name)
-                    results.append(ToolCallResult(name=name, id=tool_call.id, result=ExecToolResult(block_name=block_name, error=error)))
+                    results.append(ToolCallResult(name=name, funcname=tool_call.funcname or ToolName.EXEC.value, id=tool_call.id, result=ExecToolResult(block_name=block_name, error=error)))
                     continue
 
             # 执行工具调用
@@ -283,7 +283,10 @@ class ToolCallProcessor:
         else:
             result = ToolResult(error=Error.new('Unknown tool'))
 
-        toolcall_result = ToolCallResult(id=tool_call.id, source=tool_call.source, name=tool_name, result=result)
+        # Determine funcname for the result
+        funcname = tool_call.tool_name
+
+        toolcall_result = ToolCallResult(id=tool_call.id, source=tool_call.source, name=tool_name, funcname=funcname, result=result)
         task.emit('tool_call_completed', result=toolcall_result)
         return toolcall_result
 
@@ -362,11 +365,11 @@ class ToolCallProcessor:
     def _call_mcp(self, task: 'Task', tool_call: ToolCall) -> MCPToolResult:
         """执行 MCP 工具"""
         mcp_args = tool_call.arguments
-        # 使用属性访问，而不是将 Pydantic 模型当作字典
-        name = getattr(mcp_args, 'name', None)
-        arguments = getattr(mcp_args, 'arguments', {}) or {}
-        result = task.mcp.call_tool(name, arguments)
-        return MCPToolResult(result=result, name=name)
+        arguments = mcp_args.model_dump() if hasattr(mcp_args, 'model_dump') else {}
+        result = task.mcp.call_tool(tool_call.funcname, arguments)
+
+        # 将 call_tool 返回的 dict 展开为 MCPToolResult 的字段
+        return MCPToolResult(**result)
 
     def _call_subtask(self, task: 'Task', tool_call: ToolCall) -> SubTaskResult:
         """执行 SubTask 工具"""
