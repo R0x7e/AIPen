@@ -168,23 +168,23 @@ class ToolCall(BaseModel):
 
     @model_validator(mode='before')
     @classmethod
-    def alias_name(cls, values: Dict[str, Any]):
-        if isinstance(values, dict):
-            if "name" not in values and "action" in values:
-                values["name"] = values.pop("action")
-        return values
-
-    @model_validator(mode='before')
-    @classmethod
-    def validate_arguments(cls, data: Any) -> Any:
-        """根据 name 字段验证 arguments 类型"""
+    def validate_tool_call(cls, data: Any) -> Any:
+        """验证并转换 ToolCall 数据"""
         if not isinstance(data, dict):
             return data
 
+        # 1. 处理 action → name 别名
+        if "name" not in data and "action" in data:
+            data["name"] = data.pop("action")
+
+        # 2. 处理 input → arguments 别名（确保在 validation_alias 之前处理）
+        if "arguments" not in data and "input" in data:
+            data["arguments"] = data.pop("input")
+
+        # 3. 根据 name 验证 arguments 类型
         name = data.get('name')
         arguments = data.get('arguments')
 
-        # 如果 arguments 是 dict，根据 name 字段转换为对应的类型
         if isinstance(arguments, dict) and name in cls._TOOL_NAME_TO_ARGS:
             args_class = cls._TOOL_NAME_TO_ARGS[name]
             try:
