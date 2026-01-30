@@ -102,6 +102,10 @@ class ToolCall(BaseModel):
         arguments = self.function.arguments_text
         return {'id': self.id, 'type': self.type, 'function': {'name': self.function.name, 'arguments': arguments}}
 
+    @property
+    def tool_name(self):
+        return self.function.name
+
 
 class ToolMessage(Message):
     role: Literal[MessageRole.TOOL] = MessageRole.TOOL

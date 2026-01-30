@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import uuid
 from enum import Enum
-from typing import Union, List, Dict, Any, Optional, TYPE_CHECKING
+from typing import Union, List, Dict, Any, Optional, TYPE_CHECKING, ClassVar
 
 from pydantic.aliases import AliasChoices
 from pydantic import BaseModel, model_validator, Field, ValidationError
@@ -163,6 +163,9 @@ class ToolCall(BaseModel):
     funcname: str = Field(default="", title="Actual function name for display/log")
     arguments: Union[ExecToolArgs, EditToolArgs, MCPToolArgs, SubTaskArgs, SurveyToolArgs] = Field(validation_alias=AliasChoices("arguments", "input"), title="Tool arguments")
 
+    # 工具名称到参数类型的映射
+    _TOOL_NAME_TO_ARGS: ClassVar[Dict[ToolName, type[BaseModel]]] = {ToolName.EXEC: ExecToolArgs, ToolName.EDIT: EditToolArgs, ToolName.MCP: MCPToolArgs, ToolName.SUBTASK: SubTaskArgs, ToolName.SURVEY: SurveyToolArgs}
+
     @model_validator(mode='before')
     @classmethod
     def alias_name(cls, values: Dict[str, Any]):
@@ -170,6 +173,26 @@ class ToolCall(BaseModel):
             if "name" not in values and "action" in values:
                 values["name"] = values.pop("action")
         return values
+
+    @model_validator(mode='before')
+    @classmethod
+    def validate_arguments(cls, data: Any) -> Any:
+        """根据 name 字段验证 arguments 类型"""
+        if not isinstance(data, dict):
+            return data
+
+        name = data.get('name')
+        arguments = data.get('arguments')
+
+        # 如果 arguments 是 dict，根据 name 字段转换为对应的类型
+        if isinstance(arguments, dict) and name in cls._TOOL_NAME_TO_ARGS:
+            args_class = cls._TOOL_NAME_TO_ARGS[name]
+            try:
+                data['arguments'] = args_class(**arguments)
+            except ValidationError as e:
+                raise ValueError(f"Invalid arguments for {name.value}: {e}")
+
+        return data
 
     def __str__(self):
         return f"ToolCall(name='{self.name}', args={self.arguments})"

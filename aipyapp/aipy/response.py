@@ -158,21 +158,24 @@ class Response(BaseModel):
                         json_str = json_str[: last_brace_idx + 1]
 
                 arguments = json.loads(json_str)
-                funcname = tc.function.name
-                tc.function.arguments = arguments
+            except json.JSONDecodeError as e:
+                errors.add("Invalid JSON in ToolCall", json_str=tc.function.arguments, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
+                continue
 
-                try:
-                    tool_name = ToolName(funcname)
-                except ValueError:
-                    tool_name = ToolName.MCP  # Default to MCP if not recognized
+            funcname = tc.function.name
+            tc.function.arguments = arguments
 
+            try:
+                tool_name = ToolName(funcname)
+            except ValueError:
+                tool_name = ToolName.MCP  # Default to MCP if not recognized
+
+            try:
                 tool_call = ToolCall(name=tool_name, funcname=funcname, arguments=arguments, id=tc.id, source=ToolSource.OPENAI)
                 tool_calls.append(tool_call)
 
-            except json.JSONDecodeError as e:
-                errors.add("Invalid JSON in ToolCall", json_str=tc.function.arguments, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
             except Exception as e:
-                self.log.error(f"Failed to parse native tool call: {e}")
+                self.log.exception("Failed to parse native tool call")
                 errors.add("Failed to parse native tool call", exception=str(e), error_type=ParseErrorType.INVALID_FORMAT)
 
         self._add_tool_calls(tool_calls)
