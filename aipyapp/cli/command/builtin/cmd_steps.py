@@ -314,9 +314,9 @@ class StepsCommand(ParserCommand):
                                     error_msg = exec_result.stderr[:100] + "..." if len(exec_result.stderr) > 100 else exec_result.stderr
                                 else:
                                     error_msg = "Execution failed"
-                            tool_status = f"[red]❌ {tcr.name.value}[/red]: {error_msg or 'Unknown error'}"
+                            tool_status = f"[red]❌ {tcr.tool_name}[/red]: {error_msg or 'Unknown error'}"
                         else:
-                            tool_status = f"[green]✅ {tcr.name.value}[/green]"
+                            tool_status = f"[green]✅ {tcr.tool_name}[/green]"
                         tools_node.add(tool_status)
 
                 # 系统反馈

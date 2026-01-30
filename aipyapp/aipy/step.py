@@ -44,7 +44,7 @@ class Round(BaseModel):
                 for tc in tool_calls:
                     tc_id = getattr(tc, 'id', None)
                     if tc_id:
-                        tool_messages.append(ToolMessage(tool_call_id=tc_id, content=prompt))
+                        tool_messages.append(ToolMessage(tool_call_id=tc_id, content=prompt, name=tc.tool_name))
                 if tool_messages:
                     return tool_messages
 
@@ -56,7 +56,7 @@ class Round(BaseModel):
                 if res.is_openai():  # ToolCallResult has id
                     # 确保 result 是字符串
                     content = res.result.to_json() if hasattr(res.result, 'to_json') else str(res.result)
-                    msg = ToolMessage(tool_call_id=res.id, content=content)
+                    msg = ToolMessage(tool_call_id=res.id, content=content, name=res.tool_name)
                     tool_messages.append(msg)
             if tool_messages:
                 return tool_messages

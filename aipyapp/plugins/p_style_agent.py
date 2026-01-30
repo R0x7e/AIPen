@@ -141,7 +141,7 @@ class DisplayAgent(RichDisplayPlugin):
         """MCP工具调用结果"""
         result = event.typed_event.result
         self._add_message('tool_call_completed', {
-            'tool_name': result.tool_name.value if hasattr(result, 'tool_name') else 'unknown',
+            'tool_name': result.tool_name if hasattr(result, 'tool_name') else 'unknown',
             'result': result.result if hasattr(result, 'result') else result
         })
 
@@ -202,6 +202,6 @@ class DisplayAgent(RichDisplayPlugin):
         """MCP工具调用"""
         tool_call = event.typed_event.tool_call
         self._add_message('tool_call_started', {
-            'tool_name': tool_call.name.value if hasattr(tool_call, 'name') else 'unknown',
+            'tool_name': tool_call.tool_name if hasattr(tool_call, 'tool_name') else 'unknown',
             'arguments': tool_call.arguments.model_dump() if hasattr(tool_call, 'arguments') else {}
         })

@@ -43,7 +43,7 @@ class MessageRole(str, Enum):
 
 class Message(BaseModel):
     role: MessageRole
-    content: str | None
+    content: str = ""
     _mid_cache: str | None = None
 
     def dict(self):
@@ -58,8 +58,7 @@ class Message(BaseModel):
 
     def to_llm_dict(self):
         msg = {'role': self.role.value}
-        if self.content:
-            msg['content'] = self.content
+        msg['content'] = self.content
         return msg
 
 

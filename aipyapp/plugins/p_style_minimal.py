@@ -314,7 +314,7 @@ class DisplayMinimal(RichDisplayPlugin):
     def on_tool_call_started(self, event):
         """工具调用开始事件处理"""
         tool_call = event.typed_event.tool_call
-        title = self._get_title(T("Start calling tool {}"), tool_call.name.value)
+        title = self._get_title(T("Start calling tool {}"), tool_call.tool_name)
         tree = Tree(title)
         args = tool_call.arguments.model_dump_json()
         tree.add(args[:64] + '...' if len(args) > 64 else args)
@@ -324,7 +324,7 @@ class DisplayMinimal(RichDisplayPlugin):
         """MCP 工具调用结果事件处理"""
         typed_event = event.typed_event
         result = typed_event.result
-        title = self._get_title(T("Tool call result {}"), result.tool_name.value)
+        title = self._get_title(T("Tool call result {}"), result.tool_name)
         tree = Tree(title)
         json_result = result.result.model_dump_json(exclude_none=True, exclude_defaults=True)
         tree.add(json_result[:64] + '...' if len(json_result) > 64 else json_result)

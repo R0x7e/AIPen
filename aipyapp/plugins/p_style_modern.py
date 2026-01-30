@@ -246,18 +246,18 @@ class DisplayModern(RichDisplayPlugin):
     def on_tool_call_started(self, event):
         """工具调用开始事件处理"""
         tool_call = event.typed_event.tool_call
-        title = Text(f"🔧 工具调用: {tool_call.name.value}", style="bold blue")
+        title = Text(f"🔧 工具调用: {tool_call.tool_name}", style="bold blue")
         args = tool_call.arguments.model_dump_json()
         content = Syntax(args, 'json', line_numbers=False, word_wrap=True)
         panel = Panel(content, title=title, border_style="blue")
         self.console.print(panel)
-                
+
     def on_tool_call_completed(self, event):
         """工具调用结果事件处理"""
         result = event.typed_event.result
-        
+
         # 显示工具调用结果
-        title = Text(f"🔧 工具结果: {result.tool_name.value}", style="bold green")
+        title = Text(f"🔧 工具结果: {result.tool_name}", style="bold green")
         content = Syntax(result.result.model_dump_json(indent=2, exclude_none=True), 'json', line_numbers=False, word_wrap=True)
         panel = Panel(content, title=title, border_style="green")
         self.console.print(panel)
