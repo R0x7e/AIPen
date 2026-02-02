@@ -138,8 +138,9 @@ class Response(BaseModel):
                 self.log.error("Ignore empty tool_call")
                 continue
 
+            arguments_text = tc.function.arguments_text
             try:
-                json_str = tc.function.arguments_text
+                json_str = arguments_text
 
                 # Some providers may send empty arguments for no-arg tool calls.
                 # Treat empty/blank/None as an empty JSON object to avoid parse errors.
@@ -159,7 +160,7 @@ class Response(BaseModel):
 
                 arguments = json.loads(json_str)
             except json.JSONDecodeError as e:
-                errors.add("Invalid JSON in ToolCall", json_str=tc.function.arguments, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
+                errors.add("Invalid JSON in ToolCall", arguments=arguments_text, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
                 continue
 
             funcname = tc.function.name
