@@ -5,6 +5,7 @@ from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
 import tomllib
 import os
+import hashlib
 
 from loguru import logger
 
@@ -145,6 +146,7 @@ class RoleManager:
         self.current_role: Role = None
         self.log = logger.bind(src='roles')
         self.api_conf = api_conf
+        self._role_hashes: Dict[str, str] = {}
 
     def _add_api(self, role: Role):
         for api_name, api_conf in self.api_conf.items():
@@ -159,6 +161,37 @@ class RoleManager:
             for name, (value, desc) in envs.items():
                 role.add_env(name, value, desc)
 
+    def _compute_file_hash(self, file_path: str) -> str:
+        """计算文件的 SHA256 哈希值"""
+        sha256 = hashlib.sha256()
+        with open(file_path, 'rb') as f:
+            for chunk in iter(lambda: f.read(8192), b''):
+                sha256.update(chunk)
+        return sha256.hexdigest()
+
+    def _scan_role_files(self) -> Dict[str, str]:
+        """扫描所有角色目录，返回 {role_name: file_path}"""
+        role_files = {}
+        sys_roles_dir = os.path.join(os.path.dirname(__file__), '..', 'res', 'roles')
+
+        for roles_dir in [sys_roles_dir, self.roles_dir]:
+            if not roles_dir or not os.path.exists(roles_dir):
+                continue
+            for fname in os.listdir(roles_dir):
+                if fname.endswith(".toml") and not fname.startswith("_"):
+                    # 预加载以获取角色名
+                    try:
+                        file_path = os.path.join(roles_dir, fname)
+                        with open(file_path, 'rb') as f:
+                            data = tomllib.load(f)
+                        role_name = data.get('name', '').lower()
+                        if role_name:
+                            role_files[role_name] = file_path
+                    except Exception:
+                        continue
+
+        return role_files
+
     def load_roles(self):
         sys_roles_dir = os.path.join(os.path.dirname(__file__), '..', 'res', 'roles')
         for roles_dir in [sys_roles_dir, self.roles_dir]:
@@ -166,14 +199,88 @@ class RoleManager:
                 continue
             for fname in os.listdir(roles_dir):
                 if fname.endswith(".toml") and not fname.startswith("_"):
-                    role = Role.load(os.path.join(roles_dir, fname))
+                    file_path = os.path.join(roles_dir, fname)
+                    role = Role.load(file_path)
                     self.log.info(f"Loaded role: {role.name}/{len(role)}")
                     self.roles[role.name.lower()] = role
+                    self._role_hashes[role.name.lower()] = self._compute_file_hash(file_path)
                     self._add_api(role)
 
         if self.roles:
             self.default_role = list(self.roles.values())[0]
             self.current_role = self.default_role
+
+    def reload(self) -> Dict[str, Any]:
+        """重新加载所有角色文件（自动检测新增/删除/变化）
+
+        Returns:
+            {
+                'success': bool,
+                'reloaded': List[str],  # 重新加载的角色名
+                'added': List[str],     # 新增的角色名
+                'removed': List[str],   # 删除的角色名
+                'unchanged': List[str], # 未变化的角色名
+                'errors': Dict[str, str] # 加载失败的角色信息
+            }
+        """
+        result = {
+            'success': True,
+            'reloaded': [],
+            'added': [],
+            'removed': [],
+            'unchanged': [],
+            'errors': {}
+        }
+
+        # 1. 扫描当前目录，发现所有角色文件
+        current_files = self._scan_role_files()
+
+        # 2. 检测新增和删除
+        known_roles = set(self.roles.keys())
+        current_roles = set(current_files.keys())
+
+        added = current_roles - known_roles
+        removed = known_roles - current_roles
+
+        # 3. 处理删除的角色
+        for name in removed:
+            del self.roles[name]
+            if name in self._role_hashes:
+                del self._role_hashes[name]
+            result['removed'].append(name)
+
+        # 4. 处理新增的角色
+        for name in added:
+            try:
+                role = Role.load(current_files[name])
+                self.roles[name] = role
+                self._role_hashes[name] = self._compute_file_hash(current_files[name])
+                self._add_api(role)
+                result['added'].append(name)
+            except Exception as e:
+                result['errors'][name] = str(e)
+                result['success'] = False
+
+        # 5. 检测已有角色的变化
+        for name in current_roles & known_roles:
+            file_path = current_files[name]
+            current_hash = self._compute_file_hash(file_path)
+
+            if current_hash != self._role_hashes.get(name, ''):
+                try:
+                    # 重新加载
+                    role = Role.load(file_path)
+                    self.roles[name] = role
+                    self._role_hashes[name] = current_hash
+                    self._add_api(role)
+                    result['reloaded'].append(name)
+                except Exception as e:
+                    result['errors'][name] = str(e)
+                    result['success'] = False
+            else:
+                result['unchanged'].append(name)
+
+        return result
 
     def use(self, name: str):
         name = name.lower()

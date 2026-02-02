@@ -16,14 +16,17 @@ class RoleCommand(ParserCommand):
     def add_subcommands(self, subparsers):
         # List subcommand
         subparsers.add_parser('list', help=T('List available roles'))
-        
+
         # Show subcommand
         show_parser = subparsers.add_parser('show', help=T('Show role details'))
         show_parser.add_argument('role', type=str, help=T('Role name'))
-        
+
         # Use subcommand
         use_parser = subparsers.add_parser('use', help=T('Use a role'))
         use_parser.add_argument('role', type=str, help=T('Role name'))
+
+        # Reload subcommand
+        subparsers.add_parser('reload', help=T('Reload all role files'))
 
     def get_arg_values(self, name, subcommand=None, partial=None):
         if name == 'role':
@@ -127,6 +130,53 @@ class RoleCommand(ParserCommand):
             self.log.info(f'Use {args.role} role')
         else:
             self.log.error(T('Failed to use role').format(args.role))
+
+    def cmd_reload(self, args, ctx):
+        """处理 role reload 命令"""
+        result = ctx.tm.role_manager.reload()
+        self._show_reload_result(ctx, result)
+
+    def _show_reload_result(self, ctx, result):
+        """显示重新加载结果"""
+        # 概览表格
+        overview_table = Table(title="Reload Result", show_header=True)
+        overview_table.add_column("Category", style="bold cyan")
+        overview_table.add_column("Count", justify="right")
+        overview_table.add_column("Roles", style="dim")
+
+        overview_table.add_row(
+            "[bold green]✓ Reloaded[/bold green]",
+            str(len(result['reloaded'])),
+            ', '.join(result['reloaded']) if result['reloaded'] else '-'
+        )
+        overview_table.add_row(
+            "[bold cyan]+ Added[/bold cyan]",
+            str(len(result['added'])),
+            ', '.join(result['added']) if result['added'] else '-'
+        )
+        overview_table.add_row(
+            "[bold red]- Removed[/bold red]",
+            str(len(result['removed'])),
+            ', '.join(result['removed']) if result['removed'] else '-'
+        )
+        overview_table.add_row(
+            "[dim]· Unchanged[/dim]",
+            str(len(result['unchanged'])),
+            ', '.join(result['unchanged'][:5]) + ' ...' if len(result['unchanged']) > 5 else ', '.join(result['unchanged'])
+        )
+
+        ctx.console.print(overview_table)
+
+        # 错误信息
+        if result['errors']:
+            error_table = Table(title="Errors", style="bold red")
+            error_table.add_column("Role", style="bold yellow")
+            error_table.add_column("Error")
+
+            for name, error in result['errors'].items():
+                error_table.add_row(name, error)
+
+            ctx.console.print(error_table)
 
     def cmd(self, args, ctx):
         self.cmd_list(args, ctx) 
