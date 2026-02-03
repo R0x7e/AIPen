@@ -90,7 +90,7 @@ class ToolFunction(BaseModel):
 
     @property
     def arguments_text(self):
-        return self._arguments_text
+        return json.dumps(self.arguments, ensure_ascii=False, default=str) if self.arguments else self._arguments_text
 
 
 class ToolCall(BaseModel):

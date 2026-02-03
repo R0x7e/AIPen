@@ -17,6 +17,7 @@ from .types import Errors
 from .blocks import CodeBlock
 from .toolcalls import ToolCall, ToolName, ToolSource
 from .chat import ChatMessage
+from .utils import repair_json_string
 
 FRONT_MATTER_PATTERN = r"^\s*---\s*\n(.*?)\n---\s*"
 
@@ -140,23 +141,10 @@ class Response(BaseModel):
 
             arguments_text = tc.function.arguments_text
             try:
-                json_str = arguments_text
+                json_str, was_repaired, repair_msg = repair_json_string(arguments_text)
 
-                # Some providers may send empty arguments for no-arg tool calls.
-                # Treat empty/blank/None as an empty JSON object to avoid parse errors.
-                if json_str is None:
-                    json_str = "{}"
-                elif isinstance(json_str, str) and not json_str.strip():
-                    json_str = "{}"
-
-                # 尝试修复 JSON 字符串：丢弃最后一个 '}' 之后的内容
-                last_brace_idx = json_str.rfind('}')
-                if last_brace_idx != -1 and last_brace_idx < len(json_str) - 1:
-                    extra = json_str[last_brace_idx + 1 :]
-                    if extra.strip():
-                        msg = f"Truncating extra characters after JSON arguments: {extra!r}"
-                        self.log.warning(msg)
-                        json_str = json_str[: last_brace_idx + 1]
+                if was_repaired:
+                    self.log.warning(f"Repaired JSON in ToolCall: {repair_msg}")
 
                 arguments = json.loads(json_str)
             except json.JSONDecodeError as e:
