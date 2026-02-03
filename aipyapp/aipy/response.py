@@ -144,11 +144,11 @@ class Response(BaseModel):
                 json_str, was_repaired, repair_msg = repair_json_string(arguments_text)
 
                 if was_repaired:
-                    self.log.warning(f"Repaired JSON in ToolCall: {repair_msg}")
+                    self.log.warning(f"Repaired JSON in tool_calls: {repair_msg}")
 
                 arguments = json.loads(json_str)
             except json.JSONDecodeError as e:
-                errors.add("Invalid JSON in ToolCall", arguments=arguments_text, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
+                errors.add("Invalid JSON in tool_calls", arguments=arguments_text, exception=str(e), error_type=ParseErrorType.JSON_DECODE_ERROR)
                 continue
 
             funcname = tc.function.name
