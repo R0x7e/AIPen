@@ -520,7 +520,7 @@ class Task(Stoppable):
 
         step_data = StepData(initial_instruction=user_message, instruction=instruction, title=title)
         step = self.new_step(step_data)
-        self.emit('step_started', instruction=instruction, step=len(self.steps) + 1, title=title)
+        self.emit('step_started', instruction=instruction, step=len(self.steps), title=title)
         response = step.run()
         self.emit('step_completed', summary=step.get_summary(), response=response)
 

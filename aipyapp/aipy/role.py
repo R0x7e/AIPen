@@ -3,6 +3,7 @@
 
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass
+from pathlib import Path
 import tomllib
 import os
 import hashlib
@@ -34,6 +35,7 @@ class Role:
         self.name: str = ''
         self.short: str = ''
         self.detail: str = ''
+        self.role_dir: Optional[str] = None
         self.envs: Dict[str, tuple[str, str]] = {}
         self.packages: Dict[str, set[str]] = {}
         self.tips: Dict[str, Tip] = {}
@@ -123,6 +125,38 @@ class Role:
 
         return role
 
+    @staticmethod
+    def _read_text_if_exists(path: Path) -> Optional[str]:
+        if not path.exists() or not path.is_file():
+            return None
+        return path.read_text(encoding="utf-8", errors="ignore").strip()
+
+    def _load_role_extras(self, role_dir: Path) -> None:
+        """从角色目录加载额外提示内容"""
+        self.role_dir = str(role_dir)
+
+        prompts_dir = role_dir / "prompts"
+        if prompts_dir.exists():
+            # 追加系统提示片段到 detail
+            for name in ("system.md", "role.md", "detail.md"):
+                extra = self._read_text_if_exists(prompts_dir / name)
+                if extra:
+                    if self.detail:
+                        self.detail = f"{self.detail}\n\n{extra}"
+                    else:
+                        self.detail = extra
+                    break
+
+            # 额外 tips：prompts/tips/*.md
+            tips_dir = prompts_dir / "tips"
+            if tips_dir.exists():
+                for tip_file in sorted(tips_dir.glob("*.md")):
+                    content = self._read_text_if_exists(tip_file)
+                    if not content:
+                        continue
+                    tip_name = tip_file.stem
+                    self.add_tip(tip_name, "", content)
+
     @classmethod
     def load(cls, toml_path: str) -> 'Role':
         """从 TOML 文件加载角色信息
@@ -137,6 +171,23 @@ class Role:
             data = tomllib.load(f)
         
         return cls.from_dict(data)
+
+    @classmethod
+    def load_from_dir(cls, role_dir: str) -> 'Role':
+        """从角色目录加载角色信息（role.toml + prompts）"""
+        role_dir_path = Path(role_dir)
+        role_toml = role_dir_path / "role.toml"
+        if not role_toml.exists():
+            raise FileNotFoundError(f"role.toml not found in {role_dir_path}")
+        role = cls.load(str(role_toml))
+        role._load_role_extras(role_dir_path)
+        return role
+
+@dataclass
+class RoleSource:
+    name: str
+    source_type: str  # "file" or "dir"
+    path: str
 
 class RoleManager:
     def __init__(self, roles_dir: str = None, api_conf: Dict[str, Dict[str, Any]] = None):
@@ -169,42 +220,96 @@ class RoleManager:
                 sha256.update(chunk)
         return sha256.hexdigest()
 
-    def _scan_role_files(self) -> Dict[str, str]:
-        """扫描所有角色目录，返回 {role_name: file_path}"""
-        role_files = {}
+    def _compute_dir_hash(self, dir_path: str) -> str:
+        """计算目录内容的 SHA256 哈希值（包含文件路径和内容）"""
+        sha256 = hashlib.sha256()
+        base = Path(dir_path)
+        for file_path in sorted(base.rglob("*")):
+            if not file_path.is_file():
+                continue
+            rel_path = file_path.relative_to(base).as_posix()
+            sha256.update(rel_path.encode("utf-8"))
+            with open(file_path, "rb") as f:
+                for chunk in iter(lambda: f.read(8192), b''):
+                    sha256.update(chunk)
+        return sha256.hexdigest()
+
+    def _scan_role_sources(self) -> Dict[str, RoleSource]:
+        """扫描所有角色目录，返回 {role_name: RoleSource}"""
+        role_sources: Dict[str, RoleSource] = {}
         sys_roles_dir = os.path.join(os.path.dirname(__file__), '..', 'res', 'roles')
 
         for roles_dir in [sys_roles_dir, self.roles_dir]:
             if not roles_dir or not os.path.exists(roles_dir):
                 continue
-            for fname in os.listdir(roles_dir):
-                if fname.endswith(".toml") and not fname.startswith("_"):
-                    # 预加载以获取角色名
+            entries = list(Path(roles_dir).iterdir())
+            dirs = sorted([e for e in entries if e.is_dir()])
+            files = sorted([e for e in entries if e.is_file()])
+
+            # 目录形式角色优先
+            for entry in dirs:
+                role_toml = entry / "role.toml"
+                if role_toml.exists():
                     try:
-                        file_path = os.path.join(roles_dir, fname)
-                        with open(file_path, 'rb') as f:
+                        with open(role_toml, 'rb') as f:
                             data = tomllib.load(f)
                         role_name = data.get('name', '').lower()
                         if role_name:
-                            role_files[role_name] = file_path
+                            role_sources[role_name] = RoleSource(role_name, "dir", str(entry))
                     except Exception:
                         continue
 
-        return role_files
+            # 兼容旧格式：roles/*.toml
+            for entry in files:
+                if not entry.name.endswith(".toml") or entry.name.startswith("_"):
+                    continue
+                try:
+                    with open(entry, 'rb') as f:
+                        data = tomllib.load(f)
+                    role_name = data.get('name', '').lower()
+                    if role_name:
+                        existing = role_sources.get(role_name)
+                        if existing and existing.source_type == "dir" and Path(existing.path).parent == Path(roles_dir):
+                            continue
+                        role_sources[role_name] = RoleSource(role_name, "file", str(entry))
+                except Exception:
+                    continue
+
+        return role_sources
 
     def load_roles(self):
         sys_roles_dir = os.path.join(os.path.dirname(__file__), '..', 'res', 'roles')
         for roles_dir in [sys_roles_dir, self.roles_dir]:
             if not roles_dir or not os.path.exists(roles_dir):
                 continue
-            for fname in os.listdir(roles_dir):
-                if fname.endswith(".toml") and not fname.startswith("_"):
-                    file_path = os.path.join(roles_dir, fname)
-                    role = Role.load(file_path)
-                    self.log.info(f"Loaded role: {role.name}/{len(role)}")
-                    self.roles[role.name.lower()] = role
-                    self._role_hashes[role.name.lower()] = self._compute_file_hash(file_path)
-                    self._add_api(role)
+            entries = list(Path(roles_dir).iterdir())
+            dirs = sorted([e for e in entries if e.is_dir()])
+            files = sorted([e for e in entries if e.is_file()])
+
+            # 目录形式角色优先
+            for entry in dirs:
+                role_toml = entry / "role.toml"
+                if not role_toml.exists():
+                    continue
+                role = Role.load_from_dir(str(entry))
+                self.log.info(f"Loaded role: {role.name}/{len(role)}")
+                self.roles[role.name.lower()] = role
+                self._role_hashes[role.name.lower()] = self._compute_dir_hash(str(entry))
+                self._add_api(role)
+
+            # 兼容旧格式：roles/*.toml
+            for entry in files:
+                if not entry.name.endswith(".toml") or entry.name.startswith("_"):
+                    continue
+                role = Role.load(str(entry))
+                role_name = role.name.lower()
+                existing = self.roles.get(role_name)
+                if existing and getattr(existing, "role_dir", None) and Path(existing.role_dir).parent == Path(roles_dir):
+                    continue
+                self.log.info(f"Loaded role: {role.name}/{len(role)}")
+                self.roles[role_name] = role
+                self._role_hashes[role_name] = self._compute_file_hash(str(entry))
+                self._add_api(role)
 
         if self.roles:
             self.default_role = list(self.roles.values())[0]
@@ -233,7 +338,7 @@ class RoleManager:
         }
 
         # 1. 扫描当前目录，发现所有角色文件
-        current_files = self._scan_role_files()
+        current_files = self._scan_role_sources()
 
         # 2. 检测新增和删除
         known_roles = set(self.roles.keys())
@@ -252,9 +357,14 @@ class RoleManager:
         # 4. 处理新增的角色
         for name in added:
             try:
-                role = Role.load(current_files[name])
+                source = current_files[name]
+                if source.source_type == "dir":
+                    role = Role.load_from_dir(source.path)
+                    self._role_hashes[name] = self._compute_dir_hash(source.path)
+                else:
+                    role = Role.load(source.path)
+                    self._role_hashes[name] = self._compute_file_hash(source.path)
                 self.roles[name] = role
-                self._role_hashes[name] = self._compute_file_hash(current_files[name])
                 self._add_api(role)
                 result['added'].append(name)
             except Exception as e:
@@ -263,13 +373,19 @@ class RoleManager:
 
         # 5. 检测已有角色的变化
         for name in current_roles & known_roles:
-            file_path = current_files[name]
-            current_hash = self._compute_file_hash(file_path)
+            source = current_files[name]
+            if source.source_type == "dir":
+                current_hash = self._compute_dir_hash(source.path)
+            else:
+                current_hash = self._compute_file_hash(source.path)
 
             if current_hash != self._role_hashes.get(name, ''):
                 try:
                     # 重新加载
-                    role = Role.load(file_path)
+                    if source.source_type == "dir":
+                        role = Role.load_from_dir(source.path)
+                    else:
+                        role = Role.load(source.path)
                     self.roles[name] = role
                     self._role_hashes[name] = current_hash
                     self._add_api(role)
