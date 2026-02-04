@@ -136,13 +136,16 @@ class AIMessage(Message):
         #    d['finish_reason'] = self.finish_reason # 这会导致Mistral报错
         if self.tool_calls:
             d['tool_calls'] = self.tool_calls
-        # d['reasoning_content'] = self.reason
         return d
 
     def to_llm_dict(self):
+        """用于构造发给LLM的上下文消息"""
         msg = super().to_llm_dict()
         if self.tool_calls:
             msg['tool_calls'] = [tc.to_llm_dict() for tc in self.tool_calls]
+
+        # DeekSeek 要求即使没有 reason 也必须返回这个字段，不然报错
+        msg['reasoning_content'] = self.reason
         return msg
 
 

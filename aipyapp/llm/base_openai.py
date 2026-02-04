@@ -92,6 +92,8 @@ class OpenAIBaseClient(BaseClient):
                 if function.name:
                     fn['name'] += function.name
                 if function.arguments:
+                    if fn['arguments'] is None:
+                        fn['arguments'] = ''
                     fn['arguments'] += function.arguments
 
         result = []

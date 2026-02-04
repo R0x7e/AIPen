@@ -39,10 +39,10 @@ class DeepSeekClient(OpenAIBaseClient):
     BASE_URL = 'https://api.deepseek.com'
     MODEL = 'deepseek-chat'
 
-    def get_api_params(self, **kwargs):
-        params = super().get_api_params(**kwargs)
-        params['extra_body'] = {"thinking": {"type": "disabled"}}
-        return params
+    # def get_api_params(self, **kwargs):
+    #     params = super().get_api_params(**kwargs)
+    #     params['extra_body'] = {"thinking": {"type": "disabled"}}
+    #     return params
 
 
 class GrokClient(OpenAIBaseClient):

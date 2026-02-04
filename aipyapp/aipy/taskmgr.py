@@ -16,6 +16,7 @@ from .config import PLUGINS_DIR, ROLES_DIR, get_mcp_config_file, get_tt_api_key
 from .role import RoleManager
 from .mcp_tool import MCPToolManager
 
+
 class TaskManager:
     MAX_TASKS = 16
 
@@ -24,16 +25,16 @@ class TaskManager:
         self.settings = settings
         self.display_manager = display_manager
         self.log = logger.bind(src='taskmgr')
-        
+
         # 任务管理
         self.tasks = deque(maxlen=self.MAX_TASKS)
-        
+
         # 工作环境
         self._init_workenv()
-        
+
         # 初始化各种管理器
         self._init_managers()
-        
+
     def _init_workenv(self):
         """初始化工作环境"""
         # 环境变量
@@ -64,20 +65,20 @@ class TaskManager:
 
         # 诊断器
         self.diagnose = Diagnose.create(settings)
-        
+
         # 客户端管理器
         self.client_manager = ClientManager(settings.llm, max_tokens=settings.get('max_tokens'))
-        
+
         # 角色管理器
         api_conf = settings.get('api', {})
         self.role_manager = RoleManager(ROLES_DIR, api_conf)
         self.role_manager.load_roles()
         self.role_manager.use(settings.get('role', 'aipy'))
-        
+
         # MCP 工具管理器
         mcp_config_file = get_mcp_config_file(settings.get('_config_dir'))
         self.mcp = MCPToolManager(mcp_config_file, get_tt_api_key(settings))
-        
+
     def get_status(self):
         status = {
             'tasks': len(self.tasks),
@@ -85,7 +86,7 @@ class TaskManager:
             'role': self.role_manager.current_role.name,
             'client': repr(self.client_manager.current),
             'llm': self.client_manager.current.name,
-            'display': self.display_manager.style,
+            'display': None if self.display_manager is None else self.display_manager.style,
             'mcp_enabled': self.mcp.is_mcp_enabled,
         }
         return status
@@ -99,7 +100,7 @@ class TaskManager:
 
     def list_llms(self):
         return self.client_manager.to_records()
-    
+
     def list_roles(self):
         RoleRecord = namedtuple('RoleRecord', ['Name', 'Description', 'Tips', 'Current'])
         rows = []
@@ -107,14 +108,14 @@ class TaskManager:
             current = '*' if role == self.role_manager.current_role else ''
             rows.append(RoleRecord(name, role.short, len(role.tips), current))
         return rows
-    
+
     def list_envs(self):
         EnvRecord = namedtuple('EnvRecord', ['Name', 'Description', 'Value'])
         rows = []
-        for name, (value, desc) in self.role_manager.current_role.envs.items():    
+        for name, (value, desc) in self.role_manager.current_role.envs.items():
             rows.append(EnvRecord(name, desc, value[:32]))
         return rows
-    
+
     def list_tasks(self):
         rows = []
         TaskRecord = namedtuple('TaskRecord', ['task_id', 'instruction'])
@@ -122,7 +123,7 @@ class TaskManager:
             instruction = task.instruction[:32] if task.instruction else '-'
             rows.append(TaskRecord(task.task_id, instruction))
         return rows
-    
+
     def get_task_by_id(self, task_id):
         for task in self.tasks:
             if task.task_id == task_id:
@@ -149,7 +150,7 @@ class TaskManager:
         self.tasks.append(task)
         self.log.info('New task created', task_id=task.task_id)
         return task
-    
+
     def load_task(self, path: Union[str, Path]):
         """从任务状态加载任务"""
         task = Task.from_file(path, manager=self)
