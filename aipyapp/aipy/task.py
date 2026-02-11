@@ -190,13 +190,14 @@ class Task(Stoppable):
         if self.depth >= MAX_DEPTH:
             self.log.warning(f"Task depth {self.depth} exceeds maximum of {MAX_DEPTH}")
             self.features.disable('subtask')
-        tools = []
-        tools.extend(get_internal_tools_openai_format(self.features))
-        if self.mcp:
-            mcp_tools = self.mcp.get_openai_tools()
-            if mcp_tools:
-                tools.extend(mcp_tools)
-        self.data.tools = tools
+        if self.features.has('openai_call'):
+            tools = []
+            tools.extend(get_internal_tools_openai_format(self.features))
+            if self.mcp:
+                mcp_tools = self.mcp.get_openai_tools()
+                if mcp_tools:
+                    tools.extend(mcp_tools)
+            self.data.tools = tools
 
         self.prompts = Prompts(features=self.features)
         self.client_manager = manager.client_manager

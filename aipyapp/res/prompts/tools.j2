@@ -8,7 +8,7 @@ You may ONLY call tools that are explicitly listed. DO NOT invent or assume any 
 <internal_tools>
 {% if features.has('exec_code', 'aipy_call') %}
 <exec_tool>
-Name: `AIPY_Exec`
+Tool Name: `Exec`
 
 Execute a code block:
 - `input`:
@@ -26,7 +26,7 @@ Platform restrictions:
 {% endif %}
 
 <edit_tool>
-Name: `AIPY_Edit`
+Tool Name: `Edit`
 
 Modify existing code blocks incrementally.
 {% if features.has('aipy_call') %}
@@ -52,7 +52,7 @@ Error handling:
 
 {% if features.has('subtask') %}
 <subtask_tool>
-Name: `AIPY_SubTask`
+Tool Name: `SubTask`
 
 A SubTask is a powerful tool to delegate complex, self-contained parts of your main task. Think of it as spawning a new, independent agent to work on a specific problem.
 The result of their work will be returned to you as a summary.
@@ -133,7 +133,7 @@ utils.save_shared_data("model.pkl", model_data)
 
 {% if features.has('survey') %}
 <survey_tool>
-Name: `AIPY_Survey`
+Tool Name: `Survey`
 
 Use a survey when you **must** ask the user for information to complete a task (e.g., to determine requirements, choose an approach, or understand priorities).
 The survey provides an interactive, user-friendly way to collect structured information.

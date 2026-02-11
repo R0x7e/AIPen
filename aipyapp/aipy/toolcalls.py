@@ -32,11 +32,11 @@ class ToolSource(str, Enum):
 class ToolName(str, Enum):
     """Tool name"""
 
-    EDIT = "AIPY_Edit"
-    EXEC = "AIPY_Exec"
+    EDIT = "Edit"
+    EXEC = "Exec"
     MCP = "MCP"
-    SUBTASK = "AIPY_SubTask"
-    SURVEY = "AIPY_Survey"
+    SUBTASK = "SubTask"
+    SURVEY = "Survey"
 
 
 class ExecLang(str, Enum):
