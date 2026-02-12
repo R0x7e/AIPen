@@ -12,7 +12,7 @@ from ..llm import ClientManager
 from .task import Task
 from .plugins import PluginManager
 from .diagnose import Diagnose
-from .config import PLUGINS_DIR, ROLES_DIR, get_mcp_config_file, get_tt_api_key
+from .config import PLUGINS_DIR, ROLES_DIR
 from .role import RoleManager
 from .mcp_tool import MCPToolManager
 
@@ -76,8 +76,7 @@ class TaskManager:
         self.role_manager.use(settings.get('role', 'aipy'))
 
         # MCP 工具管理器
-        mcp_config_file = get_mcp_config_file(settings.get('_config_dir'))
-        self.mcp = MCPToolManager(mcp_config_file, get_tt_api_key(settings))
+        self.mcp = MCPToolManager(settings)
 
     def get_status(self):
         status = {

@@ -2,10 +2,15 @@ import json
 import re
 import hashlib
 from collections import namedtuple
+
+from loguru import logger
+
+from .. import T
 from . import cache
 from .libmcp import MCPConfigReader
 from .mcp_client import LazyMCPClient
-from .. import T
+from .config import get_mcp_config_file, get_tt_api_key
+
 
 def build_function_call_tool_name(server_name: str, tool_name: str) -> str:
     """
@@ -59,14 +64,18 @@ def build_function_call_tool_name(server_name: str, tool_name: str) -> str:
 
 
 class MCPToolManager:
-    def __init__(self, config_path, tt_api_key):
-        self.config_path = config_path
-        self.config_reader = MCPConfigReader(config_path, tt_api_key=tt_api_key)
+    def __init__(self, settings):
+        self.settings = settings
+        self.config_path = get_mcp_config_file(settings.get('_config_dir'))
+        self.mcp_config = settings.get('mcp', {})
+        tt_api_key = self.mcp_config.get('tt_api_key') or get_tt_api_key(settings)
+        self.config_reader = MCPConfigReader(self.config_path, tt_api_key=tt_api_key)
         self.user_mcp = self.config_reader.get_user_mcp()
         self.sys_mcp = self.config_reader.get_sys_mcp()
         self.mcp_servers = self.sys_mcp | self.user_mcp
         self._tools_dict = {}  # 缓存已获取的工具列表
         self._inited = False
+        self.log = logger.bind(src='MCPToolManager')
 
         # 全局启用/禁用用户MCP标志，默认禁用
         self._user_mcp_enabled = False
@@ -76,11 +85,10 @@ class MCPToolManager:
         self._server_status = self._init_server_status()
 
         # 创建全局的LazyMCPClient实例
-        self._lazy_client = LazyMCPClient(
-            mcp_servers=self.mcp_servers,
-            idle_ttl_seconds=300,
-            suppress_output=True,
-        )
+        self._lazy_client = LazyMCPClient(mcp_servers=self.mcp_servers, idle_ttl_seconds=300, suppress_output=True)
+
+        if tt_api_key and self.mcp_config.get('sys_mcp_enabled', True):
+            self.enable_sys_mcp()
 
     def _init_server_status(self):
         """初始化服务器状态，从配置文件中读取初始状态，包括禁用的服务器，同时会被命令行更新，维护在内存中"""
@@ -93,10 +101,7 @@ class MCPToolManager:
                 is_enabled = False
             else:
                 # user_mcp 服务器默认启用，除非配置中明确设置为禁用
-                is_enabled = not (
-                    server_config.get("disabled", False)
-                    or server_config.get("enabled", True) is False
-                )
+                is_enabled = not (server_config.get("disabled", False) or server_config.get("enabled", True) is False)
             server_status[server_name] = is_enabled
         return server_status
 
@@ -123,12 +128,7 @@ class MCPToolManager:
                 return []
             mcp_servers = self.user_mcp
             if self._user_mcp_enabled:
-                print(
-                    T(
-                        "Initializing MCP server, this may take a while if it's "
-                        "the first load, please wait patiently..."
-                    )
-                )
+                print(T("Initializing MCP server, this may take a while if it's the first load, please wait patiently..."))
         else:
             mcp_servers = self.sys_mcp
 
@@ -150,9 +150,7 @@ class MCPToolManager:
                 # 从缓存中恢复
                 # 重新计算工具ID，以防命名规则发生变化
                 for tool in cached_tools:
-                    tool["id"] = build_function_call_tool_name(
-                        server_name, tool.get("name", "")
-                    )
+                    tool["id"] = build_function_call_tool_name(server_name, tool.get("name", ""))
                 self._tools_dict[server_name] = cached_tools
                 servers_from_cache.append(server_name)
             else:
@@ -168,15 +166,12 @@ class MCPToolManager:
                 target_servers = [i[0] for i in servers_to_load]
                 print(f"+ Loading MCP server {', '.join(target_servers)}...")
                 # 使用全局 LazyMCPClient 一次性获取所有工具
-                all_discovered_tools = self._lazy_client.list_tools(
-                    discover_all=True,
-                    servers=target_servers
-                )
+                all_discovered_tools = self._lazy_client.list_tools(discover_all=True, servers=target_servers)
 
                 # 按服务器名称分组工具
                 for server_name, server_config in servers_to_load:
                     try:
-                        #print(f"  Processing tools for {server_name}")
+                        # print(f"  Processing tools for {server_name}")
                         # 过滤出属于当前服务器的工具
                         server_tools = []
                         for tool in all_discovered_tools:
@@ -184,11 +179,9 @@ class MCPToolManager:
                             if tool_name.startswith(f"{server_name}:"):
                                 # 去掉服务器前缀，获取真实工具名
                                 clean_tool = tool.copy()
-                                clean_tool["name"] = tool_name[len(f"{server_name}:"):]
+                                clean_tool["name"] = tool_name[len(f"{server_name}:") :]
                                 clean_tool["server"] = server_name
-                                clean_tool["id"] = build_function_call_tool_name(
-                                    server_name, clean_tool.get("name", "")
-                                )
+                                clean_tool["id"] = build_function_call_tool_name(server_name, clean_tool.get("name", ""))
                                 server_tools.append(clean_tool)
 
                         # 保存到缓存和内存
@@ -230,14 +223,7 @@ class MCPToolManager:
             if "$schema" in input_schema:
                 del input_schema["$schema"]
 
-            openai_tools.append({
-                "type": "function",
-                "function": {
-                    "name": tool.get("id", ""),
-                    "description": tool.get("description", ""),
-                    "parameters": input_schema
-                }
-            })
+            openai_tools.append({"type": "function", "function": {"name": tool.get("id", ""), "description": tool.get("description", ""), "parameters": input_schema}})
         return openai_tools
 
     def get_tools_prompt(self):
@@ -256,13 +242,7 @@ class MCPToolManager:
             if "$schema" in input_schema:
                 del input_schema["$schema"]
 
-            ret.append(
-                {
-                    "name": tool.get("id", ""),
-                    "description": tool.get("description", ""),
-                    "arguments": input_schema,
-                }
-            )
+            ret.append({"name": tool.get("id", ""), "description": tool.get("description", ""), "arguments": input_schema})
 
         # 转换为 JSON 字符串并添加到 Markdown 中
         json_str = json.dumps(ret, ensure_ascii=False)
@@ -306,10 +286,7 @@ class MCPToolManager:
         for server_name, _ in mcp_servers.items():
             is_enabled = self._server_status.get(server_name, True)
             tools = self._tools_dict.get(server_name, [])
-            servers_info[server_name] = {
-                "enabled": is_enabled,
-                "tools_count": len(tools),
-            }
+            servers_info[server_name] = {"enabled": is_enabled, "tools_count": len(tools)}
 
         return servers_info
 
@@ -318,24 +295,12 @@ class MCPToolManager:
         # 获取所有工具
         all_tools = self.get_available_tools()
         if not all_tools:
-            return {
-                "isError": True,
-                "content": [{
-                    "type": "text",
-                    "text": "No tools available to call."
-                }]
-            }
+            return {"isError": True, "content": [{"type": "text", "text": "No tools available to call."}]}
 
         # 查找匹配的工具，根据id查找
         matching_tools = [t for t in all_tools if t["id"] == tool_name]
         if not matching_tools:
-            return {
-                "isError": True,
-                "content": [{
-                    "type": "text",
-                    "text": f"No tool found with name: {tool_name}"
-                }]
-            }
+            return {"isError": True, "content": [{"type": "text", "text": f"No tool found with name: {tool_name}"}]}
 
         # 选择参数匹配度最高的工具
         best_match = None
@@ -369,13 +334,7 @@ class MCPToolManager:
         if not best_match:
             # 返回错误信息而不是抛出异常
             error_msg = f"No suitable tool found for {tool_name} with given arguments"
-            return {
-                "isError": True,
-                "content": [{
-                    "type": "text",
-                    "text": error_msg
-                }]
-            }
+            return {"isError": True, "content": [{"type": "text", "text": error_msg}]}
 
         # 获取服务器配置
         server_name = best_match["server"]
@@ -386,20 +345,13 @@ class MCPToolManager:
             ret = self._lazy_client.call_tool(real_tool_name, arguments, server_name)
             # ret需要是字典，并且如果同时包含content和structuredContent字段，
             # 则丢弃content
-            if (isinstance(ret, dict) and ret.get("content")
-                and ret.get("structuredContent")):
+            if isinstance(ret, dict) and ret.get("content") and ret.get("structuredContent"):
                 del ret["content"]
             return ret
         except Exception as e:
             # 捕获工具调用异常，返回错误信息给LLM
             error_msg = f"Tool call failed: {str(e)}"
-            return {
-                "isError": True,
-                "content": [{
-                    "type": "text",
-                    "text": error_msg
-                }]
-            }
+            return {"isError": True, "content": [{"type": "text", "text": error_msg}]}
 
     @property
     def is_mcp_enabled(self):
@@ -410,31 +362,28 @@ class MCPToolManager:
         """
         if self._sys_mcp_enabled:
             return True
-        
+
         if not self._user_mcp_enabled:
             return False
-        
-        user_server_status = [
-            self._server_status.get(server_name, False) 
-            for server_name in self.user_mcp
-        ]
+
+        user_server_status = [self._server_status.get(server_name, False) for server_name in self.user_mcp]
         return any(user_server_status)
-    
+
     @property
     def is_sys_mcp_enabled(self):
         return self._sys_mcp_enabled
-    
+
     @property
     def is_user_mcp_enabled(self):
         return self._user_mcp_enabled
-    
+
     def enable_user_mcp(self, enable=True):
         """全局启用/禁用用户MCP"""
         self._user_mcp_enabled = enable
         if enable:
             self.list_tools(mcp_type="user")
         return True
-        
+
     def enable_sys_mcp(self, enable=True):
         """全局启用/禁用系统MCP"""
         self._sys_mcp_enabled = enable
@@ -442,8 +391,9 @@ class MCPToolManager:
             self._server_status[server_name] = enable
         if enable:
             self.list_tools(mcp_type="sys")
+        self.log.info("System MCP enabled" if enable else "System MCP disabled")
         return True
-            
+
     def enable_user_server(self, server_name, enable=True):
         """启用/禁用指定用户MCP服务器"""
         if server_name == "*" or not server_name:
@@ -455,7 +405,7 @@ class MCPToolManager:
             ret = True
         else:
             return False
-            
+
         self.list_tools(mcp_type="user")
         return ret
 
@@ -463,11 +413,8 @@ class MCPToolManager:
         """返回所有用户MCP服务器列表"""
         status = self.get_server_info(mcp_type="user")
         ServerRecord = namedtuple("ServerRecord", ["Name", "Enabled", "ToolsCount"])
-        return [
-            ServerRecord(name, info['enabled'], info['tools_count']) 
-            for name, info in status.items()
-        ]
-    
+        return [ServerRecord(name, info['enabled'], info['tools_count']) for name, info in status.items()]
+
     def get_status(self):
         """返回MCP状态信息供状态栏使用"""
         total_tools = 0
@@ -490,11 +437,4 @@ class MCPToolManager:
                     enabled_servers += 1
                     enabled_tools += server_info['tools_count']
                 total_tools += server_info['tools_count']
-        return {
-            'sys_mcp_enabled': self._sys_mcp_enabled,
-            'user_mcp_enabled': self._user_mcp_enabled,
-            'total_servers': total_servers,
-            'total_tools': total_tools,
-            'enabled_servers': enabled_servers,
-            'enabled_tools': enabled_tools,
-        }
+        return {'sys_mcp_enabled': self._sys_mcp_enabled, 'user_mcp_enabled': self._user_mcp_enabled, 'total_servers': total_servers, 'total_tools': total_tools, 'enabled_servers': enabled_servers, 'enabled_tools': enabled_tools}
