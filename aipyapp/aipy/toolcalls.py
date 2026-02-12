@@ -261,7 +261,7 @@ class ToolCallProcessor:
                 block_name = getattr(tool_call.arguments, 'name', None)
                 if block_name and block_name in failed_blocks:
                     error = Error.new('Execution skipped: previous edit of the block failed', block_name=block_name)
-                    results.append(ToolCallResult(name=name, funcname=tool_call.funcname or ToolName.EXEC.value, id=tool_call.id, result=ExecToolResult(block_name=block_name, error=error)))
+                    results.append(ToolCallResult(name=name, funcname=tool_call.funcname or ToolName.EXEC.value, source=tool_call.source, id=tool_call.id, result=ExecToolResult(block_name=block_name, error=error)))
                     continue
 
             # 执行工具调用
