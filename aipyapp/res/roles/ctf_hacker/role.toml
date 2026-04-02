@@ -28,3 +28,47 @@ detail = """
 4. **错误修正**: 若执行 Payload 返回失败或报错，必须分析错误原因，自动修改 Payload 后重新尝试，直至成功。
 5. **严禁破坏**: 除非为了获取权限，否则禁止执行具有永久破坏性（如 `rm -rf /`）的命令。
 """
+
+[tips.recon_tips]
+short = "信息收集指南"
+file = "prompts/tips/recon_tips.md"
+
+[tips.sql_injection_tips]
+short = "SQL注入指南"
+file = "prompts/tips/sql_injection_tips.md"
+
+[tips.rce_tips]
+short = "RCE漏洞指南"
+file = "prompts/tips/rce_tips.md"
+
+[tips.xss_tips]
+short = "XSS与客户端漏洞指南"
+file = "prompts/tips/xss_tips.md"
+
+[tips.ssrf_tips]
+short = "SSRF服务端请求伪造指南"
+file = "prompts/tips/ssrf_tips.md"
+
+[tips.file_vuln_tips]
+short = "文件上传与包含漏洞指南"
+file = "prompts/tips/file_vuln_tips.md"
+
+[tips.deserialize_tips]
+short = "反序列化漏洞指南"
+file = "prompts/tips/deserialize_tips.md"
+
+[tips.xxe_tips]
+short = "XXE(XML外部实体)注入指南"
+file = "prompts/tips/xxe_tips.md"
+
+[tips.ssti_tips]
+short = "SSTI(服务端模板注入)指南"
+file = "prompts/tips/ssti_tips.md"
+
+[tips.php_tricks_tips]
+short = "PHP特性与黑魔法(Trick)指南"
+file = "prompts/tips/php_tricks_tips.md"
+
+[tips.waf_bypass_tips]
+short = "WAF绕过与安全机制逃逸指南"
+file = "prompts/tips/waf_bypass_tips.md"
