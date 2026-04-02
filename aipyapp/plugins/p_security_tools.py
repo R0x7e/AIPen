@@ -3,6 +3,10 @@
 
 import base64
 import urllib.parse
+import json
+import asyncio
+import aiohttp
+from typing import Dict, Any, List
 import html
 import binascii
 import random
@@ -87,7 +91,7 @@ class SecurityToolsPlugin(TaskPlugin):
         except Exception as e:
             return f"Error during decoding: {str(e)}"
 
-    def fn_get_page_source(self, url: str, method: str = 'GET', data: str = None, headers: dict = None) -> str:
+    def fn_get_page_source(self, url: str, method: str = 'GET', data: str = None, headers: dict = None) -> Any:
         """
         安全地获取网页源码，自动处理随机 UA 和禁用 SSL 告警。
         
@@ -143,3 +147,67 @@ class SecurityToolsPlugin(TaskPlugin):
             
         except Exception as e:
             return f"Request failed: {str(e)}"
+
+    def fn_concurrent_fuzz(self, url_template: str, payload_list: List[str], check_keyword: str = None, check_status: int = None, timeout: int = 5) -> Dict[str, Any]:
+        """
+        高并发 Fuzzing 测试工具，提供给 SubTask 快速爆破或盲注使用。
+        
+        Args:
+            url_template: 包含 '{FUZZ}' 占位符的目标 URL。
+            payload_list: 需要被替换到占位符的 Payload 列表。
+            check_keyword: 如果响应内容包含此关键字，则判定为成功（与 check_status 至少提供其一）。
+            check_status: 如果响应状态码等于此值，则判定为成功。
+            timeout: 每个请求的超时时间。
+            
+        Returns:
+            Dict: 包含成功的 payload 和对应的部分响应信息。
+        """
+        if not check_keyword and not check_status:
+            return {"error": "Must provide either check_keyword or check_status"}
+            
+        async def fetch(session, payload):
+            target_url = url_template.replace('{FUZZ}', urllib.parse.quote(payload))
+            try:
+                async with session.get(target_url, timeout=aiohttp.ClientTimeout(total=timeout), ssl=False) as response:
+                    status = response.status
+                    text = await response.text()
+                    
+                    success = False
+                    if check_status and status == check_status:
+                        success = True
+                    if check_keyword and check_keyword in text:
+                        success = True
+                        
+                    if success:
+                        return {"payload": payload, "status": status, "length": len(text), "url": target_url}
+            except Exception:
+                pass
+            return None
+
+        async def run_all():
+            async with aiohttp.ClientSession(connector=aiohttp.TCPConnector(verify_ssl=False)) as session:
+                tasks = [fetch(session, p) for p in payload_list]
+                results = await asyncio.gather(*tasks)
+                return [r for r in results if r is not None]
+
+        # 因为可能在已经有 event loop 的环境中运行，所以用更安全的调用方式
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_running():
+                # 这个在纯 CLI 或协程环境里通常是不行的，所以如果是子线程直接新建
+                pass
+        except RuntimeError:
+            pass
+            
+        new_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(new_loop)
+        try:
+            successful_results = new_loop.run_until_complete(run_all())
+        finally:
+            new_loop.close()
+
+        return {
+            "total_tested": len(payload_list),
+            "success_count": len(successful_results),
+            "successful_results": successful_results
+        }

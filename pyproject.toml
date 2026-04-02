@@ -28,6 +28,7 @@ dependencies = [
   "charset-normalizer>=3.4.2",
   "fastapi>=0.116.1",
   "promptabs>=0.3.1",
+  "aiohttp>=3.13.5",
 ]
 
 [project.optional-dependencies]

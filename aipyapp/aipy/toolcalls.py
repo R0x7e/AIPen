@@ -6,6 +6,7 @@
 from __future__ import annotations
 import json
 import uuid
+import concurrent.futures
 from enum import Enum
 from typing import Union, List, Dict, Any, Optional, TYPE_CHECKING, ClassVar
 
@@ -247,6 +248,9 @@ class ToolCallProcessor:
         """
         results = []
         failed_blocks = set()  # 记录编辑失败的代码块
+        
+        concurrent_calls = []
+        serial_calls = []
 
         for tool_call in tool_calls:
             # Check for duplicate tool call ID
@@ -256,7 +260,32 @@ class ToolCallProcessor:
                 continue
 
             self.processed_ids.add(tool_call.id)
+            
+            if tool_call.name in (ToolName.SUBTASK, ToolName.MCP):
+                concurrent_calls.append(tool_call)
+            else:
+                serial_calls.append(tool_call)
 
+        # 并发执行 SubTask 和 MCP 等耗时任务
+        if concurrent_calls:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=min(10, len(concurrent_calls))) as executor:
+                future_to_call = {
+                    executor.submit(self.call_tool, self.task, call): call 
+                    for call in concurrent_calls
+                }
+                
+                # as_completed 保证尽可能快地完成
+                for future in concurrent.futures.as_completed(future_to_call):
+                    try:
+                        result = future.result()
+                        results.append(result)
+                    except Exception as exc:
+                        call = future_to_call[future]
+                        self.log.exception(f"Concurrent tool {call.name} generated an exception: {exc}")
+                        results.append(ToolCallResult(id=call.id, source=call.source, name=call.name, funcname=call.funcname, result=ToolResult(error=Error.new(str(exc)))))
+
+        # 串行执行代码编辑、代码执行等强依赖顺序的任务
+        for tool_call in serial_calls:
             name = tool_call.name
             if name == ToolName.EXEC:
                 # 如果这个代码块之前编辑失败，跳过执行
@@ -275,7 +304,9 @@ class ToolCallProcessor:
                 if block_name:
                     failed_blocks.add(block_name)
 
-        return results
+        # 保持返回结果的顺序与原本的 tool_calls 一致
+        result_map = {r.id: r for r in results}
+        return [result_map[call.id] for call in tool_calls if call.id in result_map]
 
     def call_tool(self, task: 'Task', tool_call: ToolCall) -> ToolCallResult:
         """
@@ -398,7 +429,8 @@ class ToolCallProcessor:
 
         try:
             # 创建子任务
-            response = task.run_subtask(args.instruction, args.title)
+            client_name = getattr(args, 'client_name', None)
+            response = task.run_subtask(args.instruction, args.title, client_name=client_name)
             content = response.message.content
             if isinstance(content, list):
                 # 简单处理多模态内容，只提取文本

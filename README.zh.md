@@ -1,99 +1,98 @@
 ![logo](https://github.com/user-attachments/assets/3af4e228-79b2-4fa0-a45c-c38276c6db91)
-# Python use
-AIPy 是 Python-use 概念的一个具体实现，旨在展示该理念的实际价值与应用潜力。
 
-- **使命**: 释放大语言模型的全部潜能
-- **愿景**: 能够自主改进和使用 AIPy 的更聪明的LLM
+# AIPen (CTF Web Pentest AI) - Agent 2.0
 
-## What
-Python use 是把整个 Python 执行环境提供给 LLM 使用，可以想象为 LLM 坐在电脑前用键盘在 Python 命令行解释器里输入各种命令，按回车运行，然后观察执行结果，再输入代码和执行。
+**AI-Powered Python & Python-Powered AI**
 
-和 Agent 的区别是 Python use 不定义任何 tools 接口，LLM 可以自由使用 Python 运行环境提供的所有功能。
+AIPen 是基于 `aipyapp` 框架二次开发的 **CTF Web 自动化渗透测试系统**。它继承了 **Agent 2.0 (Code is Agent)** 的理念。
 
-## Why
-假如你是一个数据工程师，你对下面的场景一定不陌生：
-- 处理各种不同格式的数据文件：csv/excel，json，html, sqlite, parquet ...
-- 对数据进行清洗，转换，计算，聚合，排序，分组，过滤，分析，可视化等操作
+与依赖于死板的 Workflow 节点或受限工具的传统 Agent 不同，AIPen 为大语言模型 (LLM) 提供了一个完整的 Python 执行沙箱。在这里，AI 扮演着 **安全指挥官 (Security Commander)** 的角色，通过动态编写、执行和修正 Python/Shell Payload 来挖掘漏洞并获取 Flag。
 
-这个过程经常需要：
-- 启动 Python，import pandas as pd，输入一堆命令处理数据
-- 生成一堆中间临时文件
-- 找 ChatGPT / Claude 描述你的需要，手工拷贝生成的数据处理代码运行。
+> **任务 (Task) → 规划 (Plan) → 编码 (Code) → 执行 (Execute) → 反馈 (Feedback)**
 
-所以，为什么不启动 Python 命令行解释器后，直接描述你的数据处理需求，然后自动完成？好处是：
-- 无需手工临时输入一堆 Python 命令
-- 无需去找 GPT 描述需求，拷贝程序，然后手工运行
+## 二开核心特性 (CTF 定制版)
 
-这就是 Python use 要解决的问题！
+我们将原本通用的 AI Python 解释器，深度改造为了一个支持高并发、专注于渗透测试的专业安全 Agent：
 
-## How
-Python use (aipython) 是一个集成 LLM 的 Python 命令行解释器。你可以：
-- 像往常一样输入和执行 Python 命令
-- 用自然语言描述你的需求，aipython 会自动生成 Python 命令，然后执行
+1. **“指挥官”架构 (主从并发机制)**
+   - 告别单线阻塞：AI 不再是因为网络 IO 或字典爆破而挂起的单线程机器人。
+   - 扮演 **指挥官**：主 Agent 负责统筹规划，使用 `SubTask` 并发派发多个子任务进行侦察（例如：同时让子任务 1 扫描目录，让子任务 2 测试 SQL 盲注）。
+   - **异构模型调度**: 允许主 Agent 使用推理能力强但昂贵的模型（如 GPT-4o），同时指定子任务使用速度快、成本低的模型（如 `gpt-4o-mini` 或 `ollama`）。
 
-而且，两种模式可以互相访问数据。例如，aipython 处理完你的自然语言命令后，你可以用标准 Python 命令查看各种数据。
+2. **专属 CTF Hacker 角色与上下文隔离**
+   - 内置了经过专业渗透方法论训练的 `CTF_Hacker` 提示词。
+   - 子任务独立执行，避免了长篇的报错日志或 HTML 源码污染主 Agent 的推理上下文。
 
-## 使用
-AIPython 有两种运行模式：
-- 任务模式：非常简单易用，直接输入你的任务即可，适合不熟悉 Python 的用户。
-- Python模式：适合熟悉 Python 的用户，既可以输入任务也可以输入 Python 命令，适合高级用户。
+3. **高级安全工具插件 (`p_security_tools`)**
+   - 提供了基于异步 `aiohttp` 的高性能 Fuzzing 函数 (`concurrent_fuzz`)，专供 AI 进行大批量的 WAF 绕过和盲注测试。
+   - 内置了各种 Payload 的编码、解码与加解密函数。
 
-默认运行模式是任务模式，可以通过 `--python` 参数切换到 Python 模式。
+4. **无缝对接 MCP (Model Context Protocol)**
+   - 能够通过 MCP 协议与专业的安全扫描器 (如 Nmap, Sqlmap, Xray) 通信。AI 可以直接获取结构化的漏洞 JSON 报告，而无需去艰难解析终端里的纯文本。
 
-### 最小配置
-~/.aipyapp/aipyapp.toml:
-```toml
-[llm.deepseek]
-type = "deepseek"
-api_key = "Your DeepSeek API Key"
-```
+---
 
-### 任务模式
-`uv run aipy`
+## 背景理念: Code is Agent
 
-```
->>> 获取Reddit r/LocalLLaMA 最新帖子
-......
-......
->>> /done
-```
+传统 AI（Agent 1.0）严重依赖 Function Calling、Workflow 和各种插件客户端，门槛高且工具间协同极差。
 
-`pip install aipyapp` ，运行aipy命令进入任务模式
+**Python-Use** 提出了一种极简的执行架构：**无需 Agent，无需 Workflow，无需定制客户端… Code is Agent**。
 
-```
--> % aipy
-🚀 Python use - AIPython (0.1.22) [https://aipy.app]
-请输入需要 AI 处理的任务 (输入 /use <下述 LLM> 切换)
->> 获取Reddit r/LocalLLaMA 最新帖子
-......
->>
-```
+在这里，AI 拥有两大核心能力：
+- **调用 API**: 自动编写和执行代码来调用任何第三方接口。
+- **调用生态**: 灵活使用 Python 庞大的生态包（如 `requests`, `pwntools`, `bs4`）来编排自己的工作流。
 
-### Python 模式
+## 部署与启动指南
 
-#### 基本用法
-自动任务处理：
+由于 AI 生成并执行的漏洞利用脚本具有不可预测性，我们 **强烈建议** 将 AIPen 运行在隔离的 Docker 环境中。
 
-```
->>> ai("获取Google官网首页标题")
-```
+### 方式一：Docker 隔离运行 (强烈推荐)
 
-#### 自动申请安装第三方库
-```
-Python use - AIPython (Quit with 'exit()')
->>> ai("使用psutil列出当前MacOS所有进程列表")
+1. **构建镜像**:
+   ```bash
+   docker build -t aipyapp/aipy:latest -f docker/Dockerfile .
+   ```
+2. **运行 Agent**:
+   ```bash
+   # 标准交互模式
+   ./docker/run.sh
+   ```
+3. **切换到 CTF 模式**:
+   进入容器终端后，激活 Hacker 角色：
+   ```bash
+   /role ctf_hacker
+   ```
 
-📦 LLM 申请安装第三方包: ['psutil']
-如果同意且已安装，请输入 'y [y/n] (n): y
+### 方式二：本地直接运行 (仅供开发调试)
 
-```
+1. **使用 `uv` 安装依赖**:
+   ```bash
+   pip install uv
+   uv sync
+   ```
+2. **带 CTF 角色启动**:
+   ```bash
+   uv run aipy --role ctf_hacker
+   ```
 
-## Thanks
-- 黑哥: 产品经理/资深用户/首席测试官
-- Sonnet 3.7: 生成了第一版的代码，几乎无需修改就能使用。
-- ChatGPT: 提供了很多建议和代码片段，特别是命令行接口。
-- Codeium: 代码智能补齐
-- Copilot: 代码改进建议和翻译 README
+## 渗透流程示例
 
+**You:**
+> "目标网址是 `http://192.168.1.100/login.php`，请帮我分析该页面的漏洞并获取 `/flag` 的内容。"
 
+**AIPen 指挥官:**
+1. **Plan**: 派发 SubTask 1 去后台扫描目录，派发 SubTask 2 针对登录框测试 SQL 注入。
+2. **Execute**: 子任务在后台调用 `concurrent_fuzz` 异步爆破。
+3. **Feedback**: SubTask 2 汇报发现存在报错型 SQL 注入。
+4. **Code**: 主 Agent 亲自编写定制化的 Python 脚本，提取数据库名和最终的 Flag。
+5. **Result**: 成功获取 `flag{ai_is_the_new_hacker}`。
 
+## ⚠️ 安全警告与免责声明
+
+- **必须运行在沙箱中**: AI 生成的代码可能具有破坏性。严禁在带有宿主机核心权限的环境下运行本系统。
+- **网络隔离**: 请通过 Docker 网络配置，限制本 Agent 仅能访问目标靶机网段，防止 AI 对内网或外网发起非授权攻击。
+- **仅限授权使用**: 本项目仅供网络安全教学、CTF 竞赛和取得合法授权的渗透测试使用。一切由于非法使用造成的后果由使用者自行承担。
+
+## 鸣谢
+- 感谢 Python-use 社区开源的原始 `aipyapp` 框架。
+- AIPy 官网: https://www.aipy.app/
