@@ -125,6 +125,8 @@ class SubTaskArgs(BaseModel):
     title: Optional[str] = Field(default=None, title="SubTask title", description="Title of the subtask")
 
 
+    client_name: Optional[str] = Field(default=None, title="Model Client", description="Optional. Specify a cheaper/faster model for simple repetitive tasks (e.g. 'gpt-4o-mini' or 'ollama')")
+
 class SubTaskResult(ToolResult):
     """SubTask tool result"""
 

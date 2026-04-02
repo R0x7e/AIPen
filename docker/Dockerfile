@@ -1,6 +1,6 @@
 FROM ghcr.io/astral-sh/uv:alpine
 
-RUN apk add --no-cache ttyd
+RUN apk add --no-cache ttyd mitmproxy
 
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1

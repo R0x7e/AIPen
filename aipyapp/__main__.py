@@ -60,6 +60,10 @@ def parse_args():
     run_parser.add_argument('instruction', nargs='?', help='Instruction to execute')
     run_parser.add_argument('--task', default=None, help='JSON file to run as task context')
 
+    # 兼容旧版本的直接参数调用，将顶层的 --role 和 --style 添加到主 parser
+    parser.add_argument('--style', default=None, help="Style of the display, e.g. 'classic' or 'modern'")
+    parser.add_argument('--role', default=None, help="Role to use")
+
     # agent 子命令 - 只需要 port/host
     agent_parser = subparsers.add_parser('agent', help='Agent mode - HTTP API server for n8n integration')
     agent_parser.add_argument('--port', type=int, default=8848, help="Port for agent mode HTTP server (default: 8848)")

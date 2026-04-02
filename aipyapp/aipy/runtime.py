@@ -38,7 +38,59 @@ class CliPythonRuntime(PythonRuntime):
     @property
     def display(self):
         return self.task.display
-    
+
+    def inject_requests_hook(self):
+        """
+        注入 requests Hook 以实现纯 Linux 环境下的轻量级流量记录
+        记录完整的 HTTP Request 和 Response
+        """
+        try:
+            import requests
+            import time
+            
+            # 避免重复注入
+            if hasattr(requests.Session, '_aipy_hooked'):
+                return
+                
+            original_request = requests.Session.request
+            shared_dir = self.task.shared_dir
+            shared_dir.mkdir(exist_ok=True)
+            traffic_log = shared_dir / "http_traffic.log"
+            
+            def hooked_request(session, method, url, **kwargs):
+                start_time = time.time()
+                req_headers = kwargs.get('headers', {})
+                req_body = kwargs.get('data') or kwargs.get('json') or ""
+                
+                try:
+                    response = original_request(session, method, url, **kwargs)
+                    elapsed = time.time() - start_time
+                    
+                    # 异步或简单同步写入日志，避免阻塞
+                    log_entry = f"========== [{time.strftime('%Y-%m-%d %H:%M:%S')}] ==========\n"
+                    log_entry += f">>> {method} {url}\n"
+                    log_entry += f">>> Headers: {req_headers}\n"
+                    if req_body:
+                        log_entry += f">>> Body: {str(req_body)[:500]}...\n"
+                    log_entry += f"<<< Status: {response.status_code} ({elapsed:.2f}s)\n"
+                    log_entry += f"<<< Headers: {dict(response.headers)}\n"
+                    log_entry += f"<<< Body: {response.text[:1000]}...\n\n"
+                    
+                    with open(traffic_log, "a", encoding="utf-8") as f:
+                        f.write(log_entry)
+                        
+                    return response
+                except Exception as e:
+                    with open(traffic_log, "a", encoding="utf-8") as f:
+                        f.write(f">>> {method} {url} FAILED: {str(e)}\n\n")
+                    raise e
+            
+            requests.Session.request = hooked_request
+            requests.Session._aipy_hooked = True
+            self.log.info("Successfully injected requests hook for traffic logging.")
+        except ImportError:
+            self.log.warning("requests library not found, skipping hook injection.")
+
     def register_plugin(self, plugin: TaskPlugin):
         self.function_manager.register_functions(plugin.get_functions())
 

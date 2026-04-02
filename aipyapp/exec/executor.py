@@ -59,10 +59,41 @@ class BlockExecutor:
         self.log.info(f'Exec: {block}')
         executor = self.get_executor(block)
         if executor:
-            try:
-                result = executor(block)
-            except Exception as e:
-                result = ExecResult(errstr=str(e), traceback=traceback.format_exc())
+            import threading
+            import ctypes
+            
+            # 使用线程机制实现代码执行超时中断，防止恶意死循环或无限扫描
+            timeout_sec = 600  # 默认 10 分钟超时
+            
+            class TimeoutException(Exception):
+                pass
+                
+            def async_raise(thread_id, exctype):
+                res = ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread_id), ctypes.py_object(exctype))
+                if res == 0:
+                    raise ValueError("Invalid thread id")
+                elif res != 1:
+                    ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(thread_id), None)
+                    raise SystemError("PyThreadState_SetAsyncExc failed")
+                    
+            def run_with_timeout():
+                nonlocal result
+                try:
+                    result = executor(block)
+                except Exception as e:
+                    result = ExecResult(errstr=str(e), traceback=traceback.format_exc())
+            
+            result = None
+            thread = threading.Thread(target=run_with_timeout)
+            thread.start()
+            thread.join(timeout_sec)
+            
+            if thread.is_alive():
+                # 如果线程还在运行，抛出异常强制中断
+                async_raise(thread.ident, TimeoutException)
+                thread.join(5)
+                self.log.error(f'Exec timeout after {timeout_sec}s for block: {block}')
+                result = ExecResult(errstr=f'Execution timed out after {timeout_sec} seconds. Please optimize your code or avoid infinite loops.')
         else:
             result = ExecResult(errstr=f'Exec: Ignore unsupported block: {block}')
 

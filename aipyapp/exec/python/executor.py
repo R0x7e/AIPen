@@ -83,6 +83,11 @@ class PythonExecutor():
         gs = self._globals.copy()
         gs['utils'] = runtime
         runtime.start_block(block)
+        
+        # 激活 HTTP 流量拦截
+        if hasattr(runtime, 'inject_requests_hook'):
+            runtime.inject_requests_hook()
+            
         try:
             with self.block_importer:
                 exec(block.co, gs)
